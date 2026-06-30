@@ -1,0 +1,11 @@
+.private-docs/
+.tmp/
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+data/

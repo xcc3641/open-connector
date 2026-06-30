@@ -1,0 +1,12 @@
+services:
+  connector:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - connector-data:/app/data
+
+volumes:
+  connector-data:

@@ -1,0 +1,42 @@
+{
+  "name": "oomol-connect",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "web"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server/index.ts",
+    "build": "npm run generate:registry && tsc -p src/tsconfig.json",
+    "build:web": "npm run build --workspace web",
+    "dev:web": "npm run dev --workspace web",
+    "start": "node src/server/index.ts",
+    "test": "vitest run",
+    "generate:registry": "node scripts/generate-provider-registry.ts",
+    "generate:catalog": "npm run generate:registry && node scripts/generate-catalog.ts",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt --check .",
+    "format:fix": "oxfmt ."
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.6",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@scalar/hono-api-reference": "^0.10.20",
+    "ajv": "^8.20.0",
+    "hono": "^4.12.27",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@hyrious/configs": "^0.1.6",
+    "@types/node": "^26.0.1",
+    "oxfmt": "^0.56.0",
+    "oxlint": "^1.71.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  }
+}
