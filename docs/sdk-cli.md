@@ -1,11 +1,9 @@
 # SDK And CLI
 
 OpenConnector can be used directly through MCP and HTTP, and it also has dedicated developer tools
-for application and agent workflows.
-
-`oo CLI` support for the open-source runtime is being added and is targeted for mid-July 2026. Until
-that lands, use the Connector SDK, MCP, HTTP API, OpenAPI, or the local Web Console for open-source
-runtime workflows.
+for application and agent workflows. The Connector SDK and `oo CLI` both work with the open-source
+runtime and with OOMOL-hosted connector services, using the same provider ids, Action ids, and
+schemas.
 
 ## Connector SDK
 
@@ -19,7 +17,8 @@ Install:
 npm install @oomol-lab/connector
 ```
 
-For the self-hosted OpenConnector runtime, use `OpenConnector`:
+For the self-hosted OpenConnector runtime, use `OpenConnector`. `baseUrl` is the server origin, not
+a `/v1` URL:
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -33,8 +32,11 @@ const stories = await open.hackernews.get_top_stories({});
 console.log(stories);
 ```
 
-The SDK keeps provider credentials behind the gateway. The client sends connector API requests; the
-runtime authorizes and executes the provider Action.
+For OOMOL-hosted connector services, use `Connector` for personal connections or `ProjectConnector`
+for end-user connections in a SaaS product. All clients use the same Action model; the gateway keeps
+provider credentials behind the runtime boundary, authorizes the request, and executes the provider
+Action. The SDK is intentionally just a client: it does not run provider integrations locally or
+manage OAuth setup.
 
 For an end-to-end Gmail OAuth and SDK example, see
 [gmail-oauth-sdk.md](gmail-oauth-sdk.md).
@@ -42,11 +44,37 @@ For an end-to-end Gmail OAuth and SDK example, see
 ## oo CLI
 
 [oo CLI](https://github.com/oomol-lab/oo-cli) is the command-line toolkit for local AI agent
-workflows. Use it when you want an agent on your machine to discover and call connected account
-capabilities through a consistent command-line entry.
+workflows. Use it when you want an agent on your machine to discover, inspect, and call connector
+Actions through a consistent command-line entry.
 
-The CLI flow is being made compatible with the open-source runtime. This section will add
-open-source runtime setup commands once that layer is available.
+Point connector-family commands at a self-hosted OpenConnector runtime:
+
+```bash
+oo connector login http://localhost:3000
+oo connector search "send an email"
+oo connector schema gmail.send_email
+oo connector run gmail --action send_email --data '@payload.json'
+```
+
+For authenticated runtimes, create a runtime token in the Web Console Access page and pass it during
+login:
+
+```bash
+oo connector login https://connector.example.com --token <runtime-token>
+```
+
+For containers and CI, use environment variables instead of writing CLI config:
+
+```bash
+export OO_CONNECTOR_URL="https://connector.example.com"
+export OO_CONNECTOR_TOKEN="<runtime-token>"
+oo connector run github --action get_current_user --data '{}'
+```
+
+When no self-hosted runtime is configured, connector commands can still route to OOMOL-hosted
+connector services through `OO_API_KEY` or the active `oo` account. A self-hosted connector is a
+capability override for connector commands, not an `oo` account; non-connector commands such as
+hosted LLM, file transfer, and skill publishing still use OOMOL account authentication.
 
 ## Protocol APIs
 
