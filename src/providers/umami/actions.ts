@@ -13,8 +13,13 @@ const unitSchema = s.stringEnum("Time unit used for timeseries grouping.", ["hou
 const pageSchema = s.positiveInteger("One-based page number for paginated Umami endpoints.");
 const pageSizeSchema = s.positiveInteger("Number of items to return per page.");
 const metricTypeSchema = s.stringEnum("Website metric dimension to return.", [
+  "path",
+  "entry",
+  "exit",
   "url",
   "referrer",
+  "title",
+  "host",
   "browser",
   "os",
   "device",
@@ -42,7 +47,7 @@ const dateRangeInput = {
   city: s.string("City filter for the query."),
 };
 
-const dateRangeRequired = ["websiteId", "startAt", "endAt", "timezone"];
+const dateRangeRequired = ["websiteId", "startAt", "endAt"];
 const rawObjectSchema = s.looseObject("Raw Umami response payload.");
 const rawArraySchema = s.array("Raw Umami response array.", s.unknown("Raw Umami array item."));
 
@@ -78,6 +83,15 @@ const statsSchema = s.looseObject("Umami website statistics.", {
 const metricRowSchema = s.looseObject("Umami metric row.", {
   x: s.unknown("Metric dimension value returned by Umami."),
   y: s.number("Metric count returned by Umami."),
+});
+
+const expandedMetricRowSchema = s.looseObject("Umami expanded metric row.", {
+  name: s.unknown("Metric dimension value returned by Umami."),
+  pageviews: s.unknown("Pageview count returned by Umami."),
+  visitors: s.unknown("Visitor count returned by Umami."),
+  visits: s.unknown("Visit count returned by Umami."),
+  bounces: s.unknown("Bounce count returned by Umami."),
+  totaltime: s.unknown("Total time returned by Umami."),
 });
 
 const eventRowSchema = s.looseObject("Umami event row.", {
@@ -194,6 +208,27 @@ export const umamiActions: ProviderActionDefinition[] = [
         raw: rawArraySchema,
       },
       "Umami website metrics response.",
+    ),
+  }),
+  defineProviderAction(service, {
+    name: "get_expanded_metrics",
+    description:
+      "Get expanded Umami website metrics with pageviews, visitors, visits, bounces, and total time for each dimension row. Use type=path for self-hosted Umami path rankings.",
+    inputSchema: s.actionInput(
+      {
+        ...dateRangeInput,
+        type: metricTypeSchema,
+        limit: s.positiveInteger("Maximum number of expanded metric rows to return."),
+      },
+      [...dateRangeRequired, "type"],
+      "Request parameters for retrieving expanded Umami website metrics.",
+    ),
+    outputSchema: s.actionOutput(
+      {
+        metrics: s.array("Expanded metric rows returned by Umami.", expandedMetricRowSchema),
+        raw: rawArraySchema,
+      },
+      "Umami expanded website metrics response.",
     ),
   }),
   defineProviderAction(service, {

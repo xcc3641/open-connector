@@ -1,17 +1,30 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
 
 import { optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
+import { assertPublicHttpUrl } from "../../core/request.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 export const umamiApiBaseUrl = "https://api.umami.is";
 export const umamiValidationPath = "/api/auth/verify";
 
-type UmamiActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
+export interface UmamiActionContext {
+  apiKey?: string;
+  values: Record<string, string>;
+  fetcher: typeof fetch;
+  signal?: AbortSignal;
+}
+
+export interface UmamiCredentialInput {
+  apiKey?: string;
+  values: Record<string, string>;
+}
+
+type UmamiActionHandler = (input: Record<string, unknown>, context: UmamiActionContext) => Promise<unknown>;
+type UmamiAuthMode = "api_key" | "self_hosted_login";
 
 interface UmamiRequestOptions {
   path: string;
-  apiKey: string;
+  context: UmamiActionContext;
   fetcher: typeof fetch;
   signal?: AbortSignal;
   mode: "validate" | "execute";
@@ -19,17 +32,23 @@ interface UmamiRequestOptions {
   query?: Record<string, string | undefined>;
 }
 
+interface ResolvedUmamiAuth {
+  baseUrl: string;
+  authMode: UmamiAuthMode;
+  bearerToken: string;
+  username?: string;
+}
+
 export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
   async get_current_user(_input, context) {
-    const user = requireObject(
+    const user = normalizeCurrentUserPayload(
       await requestUmamiJson({
         path: "/api/me",
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
       }),
-      "Umami returned an invalid user payload",
     );
     return { user, raw: user };
   },
@@ -37,7 +56,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const payload = requireObject(
       await requestUmamiJson({
         path: "/api/websites",
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -62,7 +81,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const website = requireObject(
       await requestUmamiJson({
         path: `/api/websites/${encodeURIComponent(websiteId)}`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -76,7 +95,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const stats = requireObject(
       await requestUmamiJson({
         path: `/api/websites/${encodeURIComponent(websiteId)}/stats`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -91,7 +110,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const pageviews = requireObject(
       await requestUmamiJson({
         path: `/api/websites/${encodeURIComponent(websiteId)}/pageviews`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -109,7 +128,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const metrics = objectArray(
       await requestUmamiJson({
         path: `/api/websites/${encodeURIComponent(websiteId)}/metrics`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -123,12 +142,31 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     );
     return { metrics, raw: metrics };
   },
+  async get_expanded_metrics(input, context) {
+    const websiteId = requiredInputString(input.websiteId, "websiteId");
+    const metrics = objectArray(
+      await requestUmamiJson({
+        path: `/api/websites/${encodeURIComponent(websiteId)}/metrics/expanded`,
+        context,
+        fetcher: context.fetcher,
+        signal: context.signal,
+        mode: "execute",
+        query: {
+          ...buildDateRangeQuery(input),
+          type: requiredInputString(input.type, "type"),
+          limit: optionalIntegerString(input.limit),
+        },
+      }),
+      "Umami returned an invalid expanded metrics payload",
+    );
+    return { metrics, raw: metrics };
+  },
   async get_realtime(input, context) {
     const websiteId = requiredInputString(input.websiteId, "websiteId");
     const realtime = requireObject(
       await requestUmamiJson({
         path: `/api/realtime/${encodeURIComponent(websiteId)}`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -142,7 +180,7 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
     const payload = requireObject(
       await requestUmamiJson({
         path: `/api/websites/${encodeURIComponent(websiteId)}/events`,
-        apiKey: context.apiKey,
+        context,
         fetcher: context.fetcher,
         signal: context.signal,
         mode: "execute",
@@ -166,20 +204,37 @@ export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
 };
 
 export async function validateUmamiCredential(
-  apiKey: string,
+  credential: UmamiCredentialInput,
   fetcher: typeof fetch,
   signal?: AbortSignal,
 ): Promise<CredentialValidationResult> {
-  const user = requireObject(
+  const context = createUmamiActionContext(credential, fetcher, signal);
+  const auth = await resolveUmamiAuth(context, "validate");
+
+  if (auth.authMode === "self_hosted_login") {
+    return {
+      profile: {
+        accountId: `${auth.baseUrl}:${auth.username}`,
+        displayName: `${auth.username} @ ${new URL(auth.baseUrl).host}`,
+      },
+      grantedScopes: [],
+      metadata: {
+        apiBaseUrl: auth.baseUrl,
+        authMode: auth.authMode,
+        username: auth.username,
+      },
+    };
+  }
+
+  const user = normalizeCurrentUserPayload(
     await requestUmamiJson({
       path: umamiValidationPath,
-      apiKey,
+      context,
       fetcher,
       signal,
       mode: "validate",
       method: "POST",
     }),
-    "Umami returned an invalid credential payload",
   );
 
   const userId = optionalString(user.id);
@@ -191,7 +246,8 @@ export async function validateUmamiCredential(
     },
     grantedScopes: [],
     metadata: {
-      apiBaseUrl: umamiApiBaseUrl,
+      apiBaseUrl: auth.baseUrl,
+      authMode: auth.authMode,
       validationEndpoint: umamiValidationPath,
       userId,
       username,
@@ -200,8 +256,22 @@ export async function validateUmamiCredential(
   };
 }
 
+export function createUmamiActionContext(
+  credential: UmamiCredentialInput,
+  fetcher: typeof fetch,
+  signal?: AbortSignal,
+): UmamiActionContext {
+  return {
+    apiKey: credential.apiKey,
+    values: credential.values,
+    fetcher,
+    signal,
+  };
+}
+
 async function requestUmamiJson(options: UmamiRequestOptions): Promise<unknown> {
-  const url = new URL(`${umamiApiBaseUrl}${options.path}`);
+  const auth = await resolveUmamiAuth(options.context, options.mode);
+  const url = new URL(`${auth.baseUrl}${options.path}`);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined) {
       url.searchParams.set(key, value);
@@ -212,7 +282,7 @@ async function requestUmamiJson(options: UmamiRequestOptions): Promise<unknown> 
     method: options.method ?? "GET",
     headers: {
       accept: "application/json",
-      authorization: `Bearer ${options.apiKey}`,
+      authorization: `Bearer ${auth.bearerToken}`,
       "user-agent": providerUserAgent,
     },
     signal: options.signal,
@@ -226,11 +296,82 @@ async function requestUmamiJson(options: UmamiRequestOptions): Promise<unknown> 
   return payload;
 }
 
+async function resolveUmamiAuth(context: UmamiActionContext, mode: "validate" | "execute"): Promise<ResolvedUmamiAuth> {
+  const baseUrl = normalizeBaseUrl(context.values.baseUrl);
+  const username = optionalString(context.values.username);
+  const password = optionalString(context.values.password);
+
+  if (username || password) {
+    if (!username) {
+      throw new ProviderRequestError(400, "username is required for self-hosted Umami login");
+    }
+    if (!password) {
+      throw new ProviderRequestError(400, "password is required for self-hosted Umami login");
+    }
+    const bearerToken = await loginToSelfHostedUmami({
+      baseUrl,
+      username,
+      password,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      mode,
+    });
+    return {
+      baseUrl,
+      authMode: "self_hosted_login",
+      bearerToken,
+      username,
+    };
+  }
+
+  const apiKey = optionalString(context.apiKey ?? context.values.apiKey);
+  if (!apiKey) {
+    throw new ProviderRequestError(401, "Configure Umami API key or self-hosted login credentials first.");
+  }
+
+  return {
+    baseUrl,
+    authMode: "api_key",
+    bearerToken: apiKey,
+  };
+}
+
+async function loginToSelfHostedUmami(input: {
+  baseUrl: string;
+  username: string;
+  password: string;
+  fetcher: typeof fetch;
+  signal?: AbortSignal;
+  mode: "validate" | "execute";
+}): Promise<string> {
+  const response = await input.fetcher(new URL(`${input.baseUrl}/api/auth/login`), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "user-agent": providerUserAgent,
+    },
+    body: JSON.stringify({ username: input.username, password: input.password }),
+    signal: input.signal,
+  });
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw mapUmamiError(response.status, payload, input.mode);
+  }
+
+  const token = optionalString(optionalRecord(payload)?.token);
+  if (!token) {
+    throw new ProviderRequestError(502, "Umami login returned no token", payload);
+  }
+  return token;
+}
+
 function buildDateRangeQuery(input: Record<string, unknown>): Record<string, string | undefined> {
   return {
     startAt: integerString(input.startAt, "startAt"),
     endAt: integerString(input.endAt, "endAt"),
-    timezone: requiredInputString(input.timezone, "timezone"),
+    timezone: optionalString(input.timezone),
     url: optionalString(input.url),
     referrer: optionalString(input.referrer),
     title: optionalString(input.title),
@@ -257,6 +398,30 @@ async function readResponsePayload(response: Response): Promise<unknown> {
       message: text,
     };
   }
+}
+
+function normalizeCurrentUserPayload(payload: unknown): Record<string, unknown> {
+  const body = requireObject(payload, "Umami returned an invalid user payload");
+  const nestedUser = optionalRecord(body.user);
+  return nestedUser ?? body;
+}
+
+function normalizeBaseUrl(value: unknown): string {
+  const raw = optionalString(value) ?? umamiApiBaseUrl;
+  const url = assertPublicHttpUrl(raw, {
+    fieldName: "baseUrl",
+    createError: (message) => new ProviderRequestError(400, message),
+  });
+  if (url.username || url.password) {
+    throw new ProviderRequestError(400, "baseUrl must not include credentials");
+  }
+  url.pathname = url.pathname.replace(/\/+$/u, "");
+  if (url.pathname.endsWith("/api")) {
+    url.pathname = url.pathname.slice(0, -"/api".length) || "/";
+  }
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/u, "");
 }
 
 function mapUmamiError(status: number, payload: unknown, mode: "validate" | "execute"): ProviderRequestError {
