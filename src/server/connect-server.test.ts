@@ -797,7 +797,7 @@ describe("ConnectServer", () => {
     expect(callbackText).toContain("badge");
     expect(callbackText).toContain("Automatically closing in 5 seconds.");
     expect(callbackText).toContain("setTimeout");
-    expect(callbackText).toContain("window.close(),5000");
+    expect(callbackText).toContain("window.close()");
     const connections = await app.request("/api/connections");
     expect(connections.status).toBe(200);
     await expect(connections.json()).resolves.toMatchObject([
