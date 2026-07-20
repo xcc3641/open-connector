@@ -1,26 +1,25 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
-import { revenuecatActions } from "./actions.ts";
+import { revenueCatActions } from "./actions.ts";
 
 const service = "revenuecat";
 
-/**
- * RevenueCat provider backed by the public RevenueCat REST API v2.
- */
 export const provider: ProviderDefinition = {
   service,
   displayName: "RevenueCat",
-  categories: ["Developer Tools", "Payments"],
+  description: "Manage RevenueCat projects, customers, subscriptions, entitlements, offerings, products, and metrics.",
+  categories: ["Finance", "Developer Tools", "Subscriptions"],
   authTypes: ["api_key"],
   auth: [
     {
       type: "api_key",
-      label: "Secret API Key",
+      label: "V2 Secret API Key",
       placeholder: "sk_...",
       description:
-        "RevenueCat API v2 secret key sent as a Bearer token. Create a secret key in RevenueCat Project Settings > API keys: https://www.revenuecat.com/docs/api-v2.",
+        "RevenueCat REST API v2 secret API key sent as a Bearer token. Create a V2 secret key in the RevenueCat project settings API keys page: https://www.revenuecat.com/docs/welcome/authentication.",
+      extraFields: [],
     },
   ],
   homepageUrl: "https://www.revenuecat.com",
-  actions: revenuecatActions,
+  actions: revenueCatActions,
 };

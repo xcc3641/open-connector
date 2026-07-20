@@ -1,508 +1,290 @@
 import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { RevenueCatActionName } from "./actions.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
 
 import {
   compactObject,
-  objectArray,
+  optionalBoolean,
+  optionalInteger,
   optionalRecord,
   optionalString,
   requiredRecord,
   requiredString,
+  requiredStringArray,
 } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
-import { revenuecatProviderScopes } from "./scopes.ts";
+import { encodePathSegment } from "../../core/request.ts";
+import {
+  defineApiKeyProviderExecutors,
+  ProviderRequestError,
+  providerUserAgent,
+  readProviderTextBody,
+} from "../provider-runtime.ts";
 
 const service = "revenuecat";
-const revenuecatApiBaseUrl = "https://api.revenuecat.com/v2";
+const revenueCatApiBaseUrl = "https://api.revenuecat.com";
 
-type RevenueCatRequestPhase = "validate" | "execute";
-type RevenueCatHttpMethod = "GET" | "POST";
+type RevenueCatPhase = "validate" | "execute";
 type RevenueCatActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
+type RevenueCatQueryValue = string | number | boolean | string[] | undefined;
 
-interface RevenueCatRequestContext {
-  apiKey: string;
-  fetcher: ProviderFetch;
-  signal?: AbortSignal;
-}
-
-interface RevenueCatRequestOptions {
-  method: RevenueCatHttpMethod;
-  path: string;
-  query?: Record<string, unknown>;
-  body?: Record<string, unknown>;
-  phase?: RevenueCatRequestPhase;
-}
-
-interface RevenueCatPage {
+interface RevenueCatList {
+  object: string;
   items: unknown[];
   nextPage: string | null;
-  url: string | null;
-  raw: Record<string, unknown>;
+  url: string;
 }
 
-export const revenuecatActionHandlers: Record<RevenueCatActionName, RevenueCatActionHandler> = {
+export const revenueCatActionHandlers: Record<string, RevenueCatActionHandler> = {
   list_projects(input, context) {
-    return listProjects(input, context);
-  },
-  list_apps(input, context) {
-    return listApps(input, context);
-  },
-  list_products(input, context) {
-    return listProducts(input, context);
-  },
-  get_product(input, context) {
-    return getProduct(input, context);
-  },
-  list_entitlements(input, context) {
-    return listEntitlements(input, context);
-  },
-  get_entitlement(input, context) {
-    return getEntitlement(input, context);
-  },
-  attach_products_to_entitlement(input, context) {
-    return attachProductsToEntitlement(input, context);
-  },
-  detach_products_from_entitlement(input, context) {
-    return detachProductsFromEntitlement(input, context);
-  },
-  list_offerings(input, context) {
-    return listOfferings(input, context);
-  },
-  get_offering(input, context) {
-    return getOffering(input, context);
-  },
-  list_packages(input, context) {
-    return listPackages(input, context);
-  },
-  get_package(input, context) {
-    return getPackage(input, context);
-  },
-  attach_products_to_package(input, context) {
-    return attachProductsToPackage(input, context);
-  },
-  detach_products_from_package(input, context) {
-    return detachProductsFromPackage(input, context);
+    return listRevenueCatResource("/v2/projects", input, context, "projects");
   },
   list_customers(input, context) {
-    return listCustomers(input, context);
+    return listRevenueCatResource(`/v2/projects/${projectId(input)}/customers`, input, context, "customers", {
+      search: optionalString(input.search),
+    });
   },
   get_customer(input, context) {
-    return getCustomer(input, context);
+    return getRevenueCatResource(
+      `/v2/projects/${projectId(input)}/customers/${customerId(input)}`,
+      context,
+      "customer",
+      { expand: optionalStringArray(input.expand) },
+    );
   },
   list_customer_subscriptions(input, context) {
-    return listCustomerSubscriptions(input, context);
+    return listRevenueCatResource(
+      `/v2/projects/${projectId(input)}/customers/${customerId(input)}/subscriptions`,
+      input,
+      context,
+      "customer subscriptions",
+    );
   },
   get_subscription(input, context) {
-    return getSubscription(input, context);
+    return getRevenueCatResource(
+      `/v2/projects/${projectId(input)}/subscriptions/${subscriptionId(input)}`,
+      context,
+      "subscription",
+    );
+  },
+  search_subscriptions(input, context) {
+    return listRevenueCatResource(
+      `/v2/projects/${projectId(input)}/subscriptions`,
+      input,
+      context,
+      "subscriptions",
+      {
+        store_subscription_identifier: requiredString(
+          input.storeSubscriptionIdentifier,
+          "storeSubscriptionIdentifier",
+          inputError,
+        ),
+        include_scheduled: optionalBoolean(input.includeScheduled),
+      },
+      false,
+    );
+  },
+  list_customer_active_entitlements(input, context) {
+    return listRevenueCatResource(
+      `/v2/projects/${projectId(input)}/customers/${customerId(input)}/active_entitlements`,
+      input,
+      context,
+      "active customer entitlements",
+    );
+  },
+  list_entitlements(input, context) {
+    return listRevenueCatResource(`/v2/projects/${projectId(input)}/entitlements`, input, context, "entitlements");
+  },
+  list_offerings(input, context) {
+    return listRevenueCatResource(`/v2/projects/${projectId(input)}/offerings`, input, context, "offerings", {
+      expand: optionalStringArray(input.expand),
+    });
+  },
+  list_products(input, context) {
+    return listRevenueCatResource(`/v2/projects/${projectId(input)}/products`, input, context, "products");
+  },
+  get_overview_metrics(input, context) {
+    return getRevenueCatResource(`/v2/projects/${projectId(input)}/metrics/overview`, context, "metrics", {
+      currency: optionalString(input.currency),
+    });
+  },
+  get_revenue_metric(input, context) {
+    return getRevenueCatResource(`/v2/projects/${projectId(input)}/metrics/revenue`, context, "metric", {
+      start_date: requiredString(input.startDate, "startDate", inputError),
+      end_date: requiredString(input.endDate, "endDate", inputError),
+      currency: optionalString(input.currency),
+      revenue_type: optionalString(input.revenueType),
+    });
   },
 };
 
-export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, revenuecatActionHandlers);
+export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, revenueCatActionHandlers);
 
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }): Promise<CredentialValidationResult> {
-    const raw = await revenuecatRequestJson(
+    const response = await requestRevenueCat(
+      "/v2/projects",
       { apiKey: input.apiKey, fetcher, signal },
-      { method: "GET", path: "/projects", query: { limit: 1 }, phase: "validate" },
+      { limit: 1 },
+      "validate",
     );
-    const page = normalizePage(raw, "malformed revenuecat projects response");
+    const page = readRevenueCatList(response, "projects");
     const firstProject = optionalRecord(page.items[0]);
-    const accountId = optionalString(firstProject?.id) ?? "revenuecat";
 
     return {
       profile: {
-        accountId,
-        displayName: optionalString(firstProject?.name) ?? "RevenueCat API key",
+        accountId: "revenuecat-api-key",
+        displayName: "RevenueCat API Key",
       },
-      grantedScopes: [...revenuecatProviderScopes],
-      metadata: {
-        apiBaseUrl: revenuecatApiBaseUrl,
-        validationEndpoint: "/projects",
-      },
+      grantedScopes: [],
+      metadata: compactObject({
+        apiBaseUrl: revenueCatApiBaseUrl,
+        apiVersion: "v2",
+        validationEndpoint: "/v2/projects",
+        firstProjectId: optionalString(firstProject?.id),
+      }),
     };
   },
 };
 
-async function listProjects(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return normalizePage(
-    await revenuecatRequestJson(context, {
-      method: "GET",
-      path: "/projects",
-      query: buildPaginationQuery(input),
-    }),
-    "malformed revenuecat projects response",
-  );
-}
-
-async function listApps(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/apps`,
-    "malformed revenuecat apps response",
-  );
-}
-
-async function listProducts(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/products`,
-    "malformed revenuecat products response",
-    {
-      app_id: optionalString(input.appId),
-    },
-  );
-}
-
-async function getProduct(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return wrapResource("product", await getProjectResource(input, context, "productId", "products"));
-}
-
-async function listEntitlements(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/entitlements`,
-    "malformed revenuecat entitlements response",
-  );
-}
-
-async function getEntitlement(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return wrapResource("entitlement", await getProjectResource(input, context, "entitlementId", "entitlements"));
-}
-
-async function attachProductsToEntitlement(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  const raw = await postProjectAction(input, context, "entitlementId", "entitlements", "attach_products", {
-    product_ids: readStringArray(input.productIds, "productIds"),
-  });
-  return wrapResource("entitlement", raw);
-}
-
-async function detachProductsFromEntitlement(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  const raw = await postProjectAction(input, context, "entitlementId", "entitlements", "detach_products", {
-    product_ids: readStringArray(input.productIds, "productIds"),
-  });
-  return wrapResource("entitlement", raw);
-}
-
-async function listOfferings(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/offerings`,
-    "malformed revenuecat offerings response",
-  );
-}
-
-async function getOffering(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return wrapResource("offering", await getProjectResource(input, context, "offeringId", "offerings"));
-}
-
-async function listPackages(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/offerings/${encodeURIComponent(readInputString(input.offeringId, "offeringId"))}/packages`,
-    "malformed revenuecat packages response",
-  );
-}
-
-async function getPackage(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return wrapResource("package", await getProjectResource(input, context, "packageId", "packages"));
-}
-
-async function attachProductsToPackage(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  const raw = await postProjectAction(input, context, "packageId", "packages", "attach_products", {
-    products: readPackageProductAssociations(input.products),
-  });
-  return wrapResource("package", raw);
-}
-
-async function detachProductsFromPackage(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  const raw = await postProjectAction(input, context, "packageId", "packages", "detach_products", {
-    product_ids: readStringArray(input.productIds, "productIds"),
-  });
-  return wrapResource("package", raw);
-}
-
-async function listCustomers(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  return listProjectPage(
-    input,
-    context,
-    `/projects/${encodeURIComponent(readInputString(input.projectId, "projectId"))}/customers`,
-    "malformed revenuecat customers response",
-    {
-      search: optionalString(input.search),
-    },
-  );
-}
-
-async function getCustomer(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  const projectId = encodeURIComponent(readInputString(input.projectId, "projectId"));
-  const customerId = encodeURIComponent(readInputString(input.customerId, "customerId"));
-  return wrapResource(
-    "customer",
-    await revenuecatRequestJson(context, {
-      method: "GET",
-      path: `/projects/${projectId}/customers/${customerId}`,
-      query: buildExpandQuery(input),
-    }),
-  );
-}
-
-async function listCustomerSubscriptions(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  const projectId = encodeURIComponent(readInputString(input.projectId, "projectId"));
-  const customerId = encodeURIComponent(readInputString(input.customerId, "customerId"));
-  return normalizePage(
-    await revenuecatRequestJson(context, {
-      method: "GET",
-      path: `/projects/${projectId}/customers/${customerId}/subscriptions`,
-      query: { ...buildPaginationQuery(input), environment: optionalString(input.environment) },
-    }),
-    "malformed revenuecat subscriptions response",
-  );
-}
-
-async function getSubscription(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
-  const projectId = encodeURIComponent(readInputString(input.projectId, "projectId"));
-  const subscriptionId = encodeURIComponent(readInputString(input.subscriptionId, "subscriptionId"));
-  return wrapResource(
-    "subscription",
-    await revenuecatRequestJson(context, {
-      method: "GET",
-      path: `/projects/${projectId}/subscriptions/${subscriptionId}`,
-    }),
-  );
-}
-
-async function listProjectPage(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
+async function listRevenueCatResource(
   path: string,
-  malformedMessage: string,
-  extraQuery: Record<string, unknown> = {},
-): Promise<unknown> {
-  return normalizePage(
-    await revenuecatRequestJson(context, {
-      method: "GET",
-      path,
-      query: { ...buildPaginationQuery(input), ...buildExpandQuery(input), ...compactObject(extraQuery) },
-    }),
-    malformedMessage,
+  input: Record<string, unknown>,
+  context: ApiKeyProviderContext,
+  resourceName: string,
+  extraQuery: Record<string, RevenueCatQueryValue> = {},
+  includePagination = true,
+): Promise<RevenueCatList> {
+  const response = await requestRevenueCat(
+    path,
+    context,
+    {
+      ...(includePagination
+        ? {
+            starting_after: optionalString(input.startingAfter),
+            limit: optionalInteger(input.limit),
+          }
+        : {}),
+      ...extraQuery,
+    },
+    "execute",
   );
+  return readRevenueCatList(response, resourceName);
 }
 
-async function getProjectResource(
-  input: Record<string, unknown>,
+async function getRevenueCatResource(
+  path: string,
   context: ApiKeyProviderContext,
-  idFieldName: string,
-  collectionPath: string,
-): Promise<unknown> {
-  const projectId = encodeURIComponent(readInputString(input.projectId, "projectId"));
-  const resourceId = encodeURIComponent(readInputString(input[idFieldName], idFieldName));
-  return revenuecatRequestJson(context, {
-    method: "GET",
-    path: `/projects/${projectId}/${collectionPath}/${resourceId}`,
-    query: buildExpandQuery(input),
-  });
+  resourceName: string,
+  query: Record<string, RevenueCatQueryValue> = {},
+): Promise<Record<string, unknown>> {
+  const response = await requestRevenueCat(path, context, query, "execute");
+  const record = requiredRecord(response, `RevenueCat ${resourceName} response`, providerResponseError);
+  return { [resourceName]: record };
 }
 
-async function postProjectAction(
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-  idFieldName: string,
-  collectionPath: string,
-  actionName: string,
-  body: Record<string, unknown>,
+async function requestRevenueCat(
+  path: string,
+  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  query: Record<string, RevenueCatQueryValue>,
+  phase: RevenueCatPhase,
 ): Promise<unknown> {
-  const projectId = encodeURIComponent(readInputString(input.projectId, "projectId"));
-  const resourceId = encodeURIComponent(readInputString(input[idFieldName], idFieldName));
-  return revenuecatRequestJson(context, {
-    method: "POST",
-    path: `/projects/${projectId}/${collectionPath}/${resourceId}/actions/${actionName}`,
-    body,
-  });
-}
-
-export async function revenuecatRequestJson(
-  context: RevenueCatRequestContext,
-  options: RevenueCatRequestOptions,
-): Promise<unknown> {
-  const url = buildRevenueCatUrl(options.path);
-  for (const [key, value] of Object.entries(compactObject(options.query ?? {}))) {
+  const url = new URL(path, revenueCatApiBaseUrl);
+  for (const [key, value] of Object.entries(query)) {
     if (Array.isArray(value)) {
-      for (const item of value) {
-        url.searchParams.append(key, String(item));
-      }
-    } else {
+      for (const item of value) url.searchParams.append(key, item);
+    } else if (value !== undefined) {
       url.searchParams.set(key, String(value));
     }
   }
 
+  let response: Response;
+  let payload: unknown;
   try {
-    const response = await context.fetcher(url, {
-      method: options.method,
-      headers: createRevenueCatHeaders(context.apiKey, options.body != null),
-      body: options.body ? JSON.stringify(options.body) : undefined,
+    response = await context.fetcher(url, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${context.apiKey}`,
+        "user-agent": providerUserAgent,
+      },
       signal: context.signal,
     });
-    const payload = await readRevenueCatPayload(response);
-    if (!response.ok) {
-      throw createRevenueCatError(response.status, response.statusText, payload, options.phase ?? "execute");
-    }
-    return payload;
+    payload = await readRevenueCatPayload(response);
   } catch (error) {
-    if (error instanceof ProviderRequestError) {
-      throw error;
-    }
+    if (error instanceof ProviderRequestError) throw error;
     throw new ProviderRequestError(
       502,
-      error instanceof Error ? `revenuecat request failed: ${error.message}` : "revenuecat request failed",
+      error instanceof Error ? `RevenueCat request failed: ${error.message}` : "RevenueCat request failed",
     );
   }
-}
 
-function createRevenueCatHeaders(apiKey: string, hasJsonBody: boolean): Headers {
-  const headers = new Headers({
-    accept: "application/json",
-    authorization: `Bearer ${apiKey}`,
-    "user-agent": providerUserAgent,
-  });
-  if (hasJsonBody) {
-    headers.set("content-type", "application/json");
+  if (!response.ok) {
+    const status = phase === "validate" && (response.status === 401 || response.status === 403) ? 400 : response.status;
+    throw new ProviderRequestError(status || 502, extractRevenueCatError(payload, response.status), payload);
   }
-  return headers;
-}
 
-function buildRevenueCatUrl(path: string): URL {
-  return new URL(`/v2${path}`, "https://api.revenuecat.com");
+  return payload;
 }
 
 async function readRevenueCatPayload(response: Response): Promise<unknown> {
-  const text = await response.text().catch(() => "");
-  if (!text.trim()) {
-    return null;
-  }
+  const text = await readProviderTextBody(response, "RevenueCat response");
+  if (!text) return null;
+
   try {
-    return JSON.parse(text) as unknown;
+    const payload: unknown = JSON.parse(text);
+    return payload;
   } catch {
+    if (response.ok) throw new ProviderRequestError(502, "RevenueCat returned invalid JSON");
     return text;
   }
 }
 
-function createRevenueCatError(
-  status: number,
-  statusText: string,
-  payload: unknown,
-  phase: RevenueCatRequestPhase,
-): ProviderRequestError {
-  const message = extractRevenueCatErrorMessage(payload) ?? statusText ?? "revenuecat request failed";
-  if (status === 429) {
-    return new ProviderRequestError(429, message, payload);
-  }
-  if (phase === "validate" && (status === 401 || status === 403)) {
-    return new ProviderRequestError(400, message, payload);
-  }
-  if (phase === "execute" && (status === 401 || status === 403)) {
-    return new ProviderRequestError(401, message, payload);
-  }
-  if ([400, 404, 422].includes(status)) {
-    return new ProviderRequestError(400, message, payload);
-  }
-  return new ProviderRequestError(status >= 500 ? 502 : status || 502, message, payload);
-}
-
-function extractRevenueCatErrorMessage(payload: unknown): string | undefined {
-  if (typeof payload === "string") {
-    return payload.trim() || undefined;
-  }
-  const record = optionalRecord(payload);
-  if (!record) {
-    return undefined;
-  }
-  const error = optionalRecord(record.error);
-  return optionalString(record.message) ?? optionalString(record.detail) ?? optionalString(error?.message);
-}
-
-function normalizePage(raw: unknown, malformedMessage: string): RevenueCatPage {
-  const record = readProviderObject(raw, malformedMessage);
+function readRevenueCatList(payload: unknown, resourceName: string): RevenueCatList {
+  const record = requiredRecord(payload, `RevenueCat ${resourceName} response`, providerResponseError);
   if (!Array.isArray(record.items)) {
-    throw new ProviderRequestError(502, malformedMessage, raw);
+    throw new ProviderRequestError(502, `RevenueCat ${resourceName} response is missing items`);
   }
+
   return {
+    object: optionalString(record.object) ?? "list",
     items: record.items,
-    nextPage: record.next_page === null ? null : (optionalString(record.next_page) ?? null),
-    url: record.url === null ? null : (optionalString(record.url) ?? null),
-    raw: record,
+    nextPage: optionalString(record.next_page) ?? null,
+    url: requiredString(record.url, `RevenueCat ${resourceName} response url`, providerResponseError),
   };
 }
 
-function wrapResource(resourceName: string, raw: unknown): unknown {
-  return {
-    [resourceName]: readProviderObject(raw, `malformed revenuecat ${resourceName} response`),
-  };
+function extractRevenueCatError(payload: unknown, status: number): string {
+  if (typeof payload === "string" && payload.trim()) return payload;
+  const record = optionalRecord(payload);
+  if (!record) return `RevenueCat request failed with HTTP ${status || 500}`;
+  return (
+    optionalString(record.message) ??
+    optionalString(record.detail) ??
+    optionalString(record.type) ??
+    `RevenueCat request failed with HTTP ${status || 500}`
+  );
 }
 
-function buildPaginationQuery(input: Record<string, unknown>): Record<string, unknown> {
-  return compactObject({
-    starting_after: optionalString(input.startingAfter),
-    limit: input.limit,
-  });
+function projectId(input: Record<string, unknown>): string {
+  return encodePathSegment(requiredString(input.projectId, "projectId", inputError));
 }
 
-function buildExpandQuery(input: Record<string, unknown>): Record<string, unknown> {
-  const expand = readOptionalStringArray(input.expand);
-  return expand.length > 0 ? { expand } : {};
+function customerId(input: Record<string, unknown>): string {
+  return encodePathSegment(requiredString(input.customerId, "customerId", inputError));
 }
 
-function readPackageProductAssociations(value: unknown): Array<Record<string, string>> {
-  return objectArray(value, "products", (message) => new ProviderRequestError(400, message)).map((association) => {
-    return {
-      product_id: readInputString(association.productId, "productId"),
-      eligibility_criteria: readInputString(association.eligibilityCriteria, "eligibilityCriteria"),
-    };
-  });
+function subscriptionId(input: Record<string, unknown>): string {
+  return encodePathSegment(requiredString(input.subscriptionId, "subscriptionId", inputError));
 }
 
-function readStringArray(value: unknown, fieldName: string): string[] {
-  if (!Array.isArray(value)) {
-    throw new ProviderRequestError(400, `${fieldName} must be an array`);
-  }
-  const values = value.map((item) => String(item).trim()).filter(Boolean);
-  if (values.length === 0) {
-    throw new ProviderRequestError(400, `${fieldName} must contain at least one item`);
-  }
-  return values;
+function optionalStringArray(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  return requiredStringArray(value, "expand", inputError);
 }
 
-function readOptionalStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => String(item).trim()).filter(Boolean);
+function inputError(message: string): ProviderRequestError {
+  return new ProviderRequestError(400, message);
 }
 
-function readInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
-}
-
-function readProviderObject(value: unknown, message: string): Record<string, unknown> {
-  return requiredRecord(value, "response", () => new ProviderRequestError(502, message, value));
+function providerResponseError(message: string): ProviderRequestError {
+  return new ProviderRequestError(502, message);
 }
