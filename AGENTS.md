@@ -45,9 +45,47 @@
 - Do not put web UI code under `src/`. The future console should live as a separate Vite package under `web/`.
 - Public docs should describe normal OSS usage and may include official SaaS, hosted, or team product paths when they are part of the public product strategy. Do not mention internal compatibility projects or unreleased SDK behavior.
 
+## Commit Hygiene / Secrets
+
+This fork and upstream are **public**. Every commit and push must be reviewed for secrets first. Do not rely on "we can scrub later".
+
+### Never commit
+
+- Real API keys, tokens, passwords, OAuth client secrets, session cookies
+- Service-account JSON / PEM private keys (even "just for a quick test")
+- Local env files (`.env`, `.env.openconnector`, `*.env.bak*`) and runtime DB under `data/`
+- Hosted MCP/runtime bearer tokens from agent configs (e.g. `~/.pi/agent/mcp.json`)
+- Real account identifiers when avoidable in tests (prefer `example.com` / `example-*` fixtures)
+
+### Allowed in git
+
+- Placeholder shapes only: `ctx7sk-...`, `fc-...`, `Bearer <TOKEN>`, `oct_...`
+- Generated or ephemeral test keys (e.g. `generateKeyPairSync` PEM in unit tests)
+- Docs that describe *how* to set a secret, without embedding a live value
+
+### Before every commit
+
+1. `git status` / `git diff` — confirm no `.env*`, key files, or unexpected path
+2. Scan the staged diff for live-looking material:
+   - `sk-`, `ctx7sk-`, `ghp_`, `xox`, `AIza`, `BEGIN PRIVATE KEY`, long `Bearer ...`
+   - real emails / project ids that are not needed for the code change
+3. Tests and examples: use fake emails/projects; if a credential env var is missing, skip with a clear message
+4. Remember logger redaction (`src/server/logger.ts`) only affects logs — it does **not** protect git history
+
+### Local secrets stay local
+
+| Location | Notes |
+|----------|--------|
+| `.env.openconnector` | gitignored; Docker/local runtime |
+| Docker volume / `OOMOL_CONNECT_DATA_DIR` | encrypted or plaintext creds at rest; never copy into the repo |
+| Agent MCP config outside this repo | do not paste tokens into commits or docs |
+
+If a secret is committed by mistake: rotate it immediately, then purge history; do not only delete in a follow-up commit.
+
 ## Verification
 
 - Before finishing code changes, run `npm run fix-check`. It runs lint fixes, formatting fixes, and the `src` typecheck.
 - Run `npm run build` only when you need a separate no-fix typecheck, for example after generated files changed or for CI parity.
 - Run `npm run generate:catalog` when provider definitions or actions change.
 - Run provider examples manually when the task changes user-facing example behavior.
+- Before every commit/push on this public fork, run the **Commit Hygiene / Secrets** checks above.
