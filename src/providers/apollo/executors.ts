@@ -172,7 +172,7 @@ async function requestApolloJson(input: {
   try {
     const headers: Record<string, string> = {
       accept: "application/json",
-      authorization: `Bearer ${input.apiKey}`,
+      "x-api-key": input.apiKey,
       "user-agent": providerUserAgent,
     };
     if (input.body) {
