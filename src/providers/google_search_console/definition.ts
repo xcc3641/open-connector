@@ -7,12 +7,16 @@ const service = "google_search_console";
 
 /**
  * Google Search Console provider backed by the Search Console and URL Inspection APIs.
+ *
+ * Supports:
+ * - OAuth2 user consent (browser flow)
+ * - Google service-account JSON (JWT bearer), same model as local `gsc.sh`
  */
 export const provider: ProviderDefinition = {
   service,
   displayName: "Google Search Console",
   categories: ["Data", "Marketing"],
-  authTypes: ["oauth2"],
+  authTypes: ["oauth2", "custom_credential"],
   auth: [
     {
       type: "oauth2",
@@ -23,6 +27,25 @@ export const provider: ProviderDefinition = {
       authorizationParams: {
         access_type: "offline",
         prompt: "consent",
+      },
+    },
+    {
+      type: "custom_credential",
+      fields: [
+        {
+          key: "serviceAccountJson",
+          label: "Service Account JSON",
+          inputType: "textarea",
+          required: true,
+          secret: true,
+          placeholder: '{"type":"service_account","client_email":"…","private_key":"…"}',
+          description:
+            "Full Google Cloud service-account key JSON. The account must be added as a user on each Search Console property. Same credential model as local gsc.sh.",
+        },
+      ],
+      testAction: {
+        actionName: "list_sites",
+        input: {},
       },
     },
   ],

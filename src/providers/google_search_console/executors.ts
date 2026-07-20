@@ -1,4 +1,4 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
+import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 import type { OAuthProviderContext } from "../provider-runtime.ts";
 
 import {
@@ -9,7 +9,14 @@ import {
   pickOptionalString as pickNonEmptyString,
 } from "../../core/cast.ts";
 import { googleJsonRequest, googleRequest } from "../googledrive/runtime-shared.ts";
-import { defineOAuthProviderExecutors, ProviderRequestError } from "../provider-runtime.ts";
+import {
+  defineProviderExecutors,
+  ProviderRequestError,
+} from "../provider-runtime.ts";
+import {
+  mintGoogleServiceAccountAccessToken,
+  parseGoogleServiceAccountJson,
+} from "./service-account.ts";
 
 export const searchConsoleApiBaseUrl = "https://www.googleapis.com/webmasters/v3";
 export const urlInspectionApiBaseUrl = "https://searchconsole.googleapis.com/v1";
@@ -69,10 +76,24 @@ export const googleSearchConsoleActionHandlers: Record<string, ActionHandler> = 
   },
 };
 
-export const executors: ProviderExecutors = defineOAuthProviderExecutors(
-  "google_search_console",
-  googleSearchConsoleActionHandlers,
-);
+export const executors: ProviderExecutors = defineProviderExecutors<RuntimeDeps>({
+  service: "google_search_console",
+  handlers: googleSearchConsoleActionHandlers,
+  async createContext(context: ExecutionContext, fetcher: typeof fetch): Promise<RuntimeDeps> {
+    const accessToken = await resolveGoogleSearchConsoleAccessToken(context, fetcher);
+    const providerContext: RuntimeDeps = {
+      accessToken,
+      tokenType: "Bearer",
+      fetcher,
+      signal: context.signal,
+    };
+    if (context.transitFiles) {
+      providerContext.transitFiles = context.transitFiles;
+    }
+    return providerContext;
+  },
+  fallbackMessage: "google search console request failed",
+});
 
 export const credentialValidators: CredentialValidators = {
   async oauth2(input, { fetcher }) {
@@ -94,7 +115,55 @@ export const credentialValidators: CredentialValidators = {
       },
     };
   },
+  async customCredential(input, { fetcher, signal }) {
+    const serviceAccount = parseGoogleServiceAccountJson(input.values.serviceAccountJson ?? "");
+    // Mint a token and hit list sites so bad keys fail at connection time.
+    const accessToken = await mintGoogleServiceAccountAccessToken({
+      serviceAccount,
+      fetcher,
+      signal,
+      forceRefresh: true,
+    });
+    const payload = await searchConsoleJsonRequest<SitesPayload>("/sites", {
+      accessToken,
+      fetcher,
+    });
+    const sites = Array.isArray(payload.siteEntry) ? payload.siteEntry : [];
+    return {
+      profile: {
+        accountId: serviceAccount.client_email,
+        displayName: serviceAccount.client_email,
+      },
+      metadata: {
+        projectId: serviceAccount.project_id ?? null,
+        siteCount: sites.length,
+      },
+    };
+  },
 };
+
+async function resolveGoogleSearchConsoleAccessToken(
+  context: ExecutionContext,
+  fetcher: typeof fetch,
+): Promise<string> {
+  const credential = await context.getCredential("google_search_console");
+  if (credential?.authType === "oauth2") {
+    return credential.accessToken;
+  }
+  if (credential?.authType === "custom_credential") {
+    const serviceAccount = parseGoogleServiceAccountJson(credential.values.serviceAccountJson ?? "");
+    return mintGoogleServiceAccountAccessToken({
+      serviceAccount,
+      fetcher,
+      signal: context.signal,
+    });
+  }
+
+  throw new ProviderRequestError(
+    401,
+    "Configure google_search_console with a service-account JSON or OAuth connection first.",
+  );
+}
 
 async function listSites(_input: Record<string, unknown>, { accessToken, fetcher }: RuntimeDeps) {
   const payload = await searchConsoleJsonRequest<SitesPayload>("/sites", {
