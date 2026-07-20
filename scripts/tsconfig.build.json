@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "files": [
     "./dev-local.ts",
+    "./docker-local.ts",
     "./ensure-generated.ts",
     "./generate-catalog.ts",
     "./generate-provider-registry.ts",

@@ -15,8 +15,17 @@ export const provider: ProviderDefinition = {
   service,
   displayName: "Context7",
   categories: ["Developer Tools", "Documentation", "AI"],
-  authTypes: ["no_auth"],
-  auth: [{ type: "no_auth" }],
+  authTypes: ["no_auth", "api_key"],
+  auth: [
+    { type: "no_auth" },
+    {
+      type: "api_key",
+      label: "API Key",
+      placeholder: "ctx7sk-...",
+      description:
+        "Optional Context7 API key for higher rate limits on the hosted MCP endpoint. Sent as the CONTEXT7_API_KEY header (also accepts Authorization: Bearer). Create one in the Context7 dashboard: https://context7.com/dashboard. Docs: https://context7.com/docs/howto/api-keys",
+    },
+  ],
   homepageUrl: "https://context7.com",
   actions: [
     action(

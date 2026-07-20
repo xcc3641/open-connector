@@ -41,6 +41,7 @@ describe("Context7 provider MCP bridge", () => {
     expect(output).toEqual("Available Libraries:\n- Context7-compatible library ID: /reactjs/react.dev");
     expect(requests).toHaveLength(2);
     expect(requests[0]?.body).toMatchObject({ method: "initialize" });
+    expect(requests[0]?.headers["context7_api_key"]).toBeUndefined();
     expect(requests[1]).toMatchObject({
       url: "https://context7.example/mcp",
       headers: expect.objectContaining({ "mcp-session-id": "session-1" }),
@@ -54,6 +55,36 @@ describe("Context7 provider MCP bridge", () => {
         },
       },
     });
+  });
+
+  it("sends Context7 API key headers when a credential is configured", async () => {
+    const requests: Array<{ headers: Record<string, string> }> = [];
+
+    await callContext7McpTool(
+      {
+        url: "https://context7.example/mcp",
+        apiKey: "ctx7sk-test-key",
+        fetcher: async (_url, init) => {
+          requests.push({ headers: lowerHeaders(init?.headers) });
+          if (requests.length === 1) {
+            return new Response(sse({ result: {}, jsonrpc: "2.0", id: 1 }), {
+              headers: { "mcp-session-id": "session-key" },
+            });
+          }
+          return new Response(sse({ result: { content: [{ type: "text", text: "ok" }] }, jsonrpc: "2.0", id: 2 }));
+        },
+      },
+      "query-docs",
+      { libraryId: "/reactjs/react.dev", query: "hooks" },
+    );
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.headers).toMatchObject({
+        context7_api_key: "ctx7sk-test-key",
+        authorization: "Bearer ctx7sk-test-key",
+      });
+    }
   });
 
   it("maps Context7 action handlers to hyphenated MCP tool names", async () => {

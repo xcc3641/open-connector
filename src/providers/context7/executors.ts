@@ -1,4 +1,4 @@
-import type { ExecutionContext, ProviderExecutors } from "../../core/types.ts";
+import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 import type { Context7ActionName } from "./definition.ts";
 
 import { defineProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -13,6 +13,8 @@ export interface Context7ActionContext {
   url: string;
   fetcher: typeof fetch;
   signal?: AbortSignal;
+  /** Optional Context7 API key (ctx7sk-...). When set, requests include CONTEXT7_API_KEY. */
+  apiKey?: string;
 }
 
 type Context7ActionHandler = (input: Record<string, unknown>, context: Context7ActionContext) => Promise<unknown>;
@@ -34,15 +36,51 @@ export const context7ActionHandlers: Record<Context7ActionName, Context7ActionHa
 export const executors: ProviderExecutors = defineProviderExecutors<Context7ActionContext>({
   service,
   handlers: context7ActionHandlers,
-  createContext(context: ExecutionContext, fetcher: typeof fetch): Context7ActionContext {
+  async createContext(context: ExecutionContext, fetcher: typeof fetch): Promise<Context7ActionContext> {
+    return createContext7ActionContext(context, fetcher);
+  },
+  fallbackMessage: "context7 MCP request failed",
+});
+
+export const credentialValidators: CredentialValidators = {
+  async apiKey(input, { fetcher, signal }) {
+    await initializeContext7Session({
+      url: resolveContext7McpUrl(),
+      fetcher,
+      signal,
+      apiKey: input.apiKey,
+    });
+    return {
+      profile: {
+        accountId: "context7:api_key",
+        displayName: "Context7 API Key",
+      },
+    };
+  },
+};
+
+export async function createContext7ActionContext(
+  context: ExecutionContext,
+  fetcher: typeof fetch = fetch,
+): Promise<Context7ActionContext> {
+  const credential = await context.getCredential(service);
+  if (!credential || credential.authType === "no_auth") {
     return {
       url: resolveContext7McpUrl(),
       fetcher,
       signal: context.signal,
     };
-  },
-  fallbackMessage: "context7 MCP request failed",
-});
+  }
+  if (credential.authType === "api_key") {
+    return {
+      url: resolveContext7McpUrl(),
+      fetcher,
+      signal: context.signal,
+      apiKey: credential.apiKey,
+    };
+  }
+  throw new ProviderRequestError(401, "Connect Context7 without authentication or configure a Context7 API key.");
+}
 
 export async function callContext7McpTool(
   context: Context7ActionContext,
@@ -150,6 +188,7 @@ async function postContext7JsonRpc(
       "content-type": "application/json",
       "mcp-protocol-version": context7ProtocolVersion,
       "user-agent": providerUserAgent,
+      ...context7AuthHeaders(context.apiKey),
     };
     if (sessionId) {
       headers["mcp-session-id"] = sessionId;
@@ -181,6 +220,21 @@ async function postContext7JsonRpc(
 function resolveContext7McpUrl(): string {
   const url = process.env.CONTEXT7_MCP_URL?.trim();
   return url || defaultContext7McpUrl;
+}
+
+/**
+ * Hosted Context7 MCP accepts several header names; prefer CONTEXT7_API_KEY per docs.
+ * @see https://context7.com/docs/howto/api-keys
+ */
+export function context7AuthHeaders(apiKey: string | undefined): Record<string, string> {
+  const key = apiKey?.trim();
+  if (!key) {
+    return {};
+  }
+  return {
+    CONTEXT7_API_KEY: key,
+    authorization: `Bearer ${key}`,
+  };
 }
 
 function parseJsonRpcResponse(text: string): McpJsonRpcResponse {

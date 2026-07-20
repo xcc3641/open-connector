@@ -20,6 +20,7 @@
     "generate:registry": "node scripts/generate-provider-registry.ts",
     "generate:catalog": "npm run generate:registry && node scripts/generate-catalog.ts",
     "runtime:data": "node scripts/runtime-data.ts",
+    "docker:local": "node scripts/docker-local.ts",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "format": "oxfmt --check .",

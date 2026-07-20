@@ -1,0 +1,27 @@
+# Local source-built OpenConnector for day-to-day development.
+# Prefer: npm run docker:local
+name: openconnector
+services:
+  connector:
+    build:
+      context: ../..
+      dockerfile: docker/local/Dockerfile
+    container_name: openconnector
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:13000:3000"
+    env_file:
+      - ../../.env.openconnector
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      OOMOL_CONNECT_DATA_DIR: /app/data
+      PROXYMAN_MCP_HTTP_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - openconnector-data:/app/data
+      - "${HOME}/Library/Application Support/com.proxyman.NSProxy:/root/Library/Application Support/com.proxyman.NSProxy:ro"
+
+volumes:
+  openconnector-data:
