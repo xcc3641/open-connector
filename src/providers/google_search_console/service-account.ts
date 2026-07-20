@@ -14,19 +14,52 @@ export const googleSearchConsoleServiceAccountScope: string = [
   googleSearchConsoleFullScope,
 ].join(" ");
 
-export type GoogleServiceAccountKey = {
+/**
+ * Parsed Google Cloud service-account key fields used for JWT bearer grants.
+ */
+export interface GoogleServiceAccountKey {
   type?: string;
   client_email: string;
   private_key: string;
   private_key_id?: string;
   project_id?: string;
   token_uri?: string;
-};
+}
 
-type CachedToken = {
+interface CachedToken {
   accessToken: string;
   expiresAtMs: number;
-};
+}
+
+/**
+ * Options for minting a Google OAuth access token from a service-account key.
+ */
+export interface MintGoogleServiceAccountAccessTokenInput {
+  serviceAccount: GoogleServiceAccountKey;
+  scope?: string;
+  fetcher: typeof fetch;
+  signal?: AbortSignal;
+  /** Force mint even if a cached token exists. */
+  forceRefresh?: boolean;
+  /** Injectable clock for tests. */
+  now?: () => number;
+}
+
+/**
+ * Options for building the RS256 JWT assertion used by the JWT-bearer grant.
+ */
+export interface CreateServiceAccountJwtInput {
+  serviceAccount: GoogleServiceAccountKey;
+  scope: string;
+  nowSeconds: number;
+  lifetimeSeconds?: number;
+}
+
+interface ServiceAccountJwtHeader {
+  alg: "RS256";
+  typ: "JWT";
+  kid?: string;
+}
 
 /** Process-local token cache keyed by client_email + scope. */
 const tokenCache = new Map<string, CachedToken>();
@@ -62,30 +95,32 @@ export function parseGoogleServiceAccountJson(raw: string): GoogleServiceAccount
     throw new ProviderRequestError(400, "serviceAccountJson is missing a valid private_key");
   }
 
-  return {
-    type: typeof record.type === "string" ? record.type : undefined,
+  const key: GoogleServiceAccountKey = {
     client_email: clientEmail,
     private_key: privateKey,
-    private_key_id: typeof record.private_key_id === "string" ? record.private_key_id : undefined,
-    project_id: typeof record.project_id === "string" ? record.project_id : undefined,
-    token_uri: typeof record.token_uri === "string" ? record.token_uri : undefined,
   };
+  if (typeof record.type === "string") {
+    key.type = record.type;
+  }
+  if (typeof record.private_key_id === "string") {
+    key.private_key_id = record.private_key_id;
+  }
+  if (typeof record.project_id === "string") {
+    key.project_id = record.project_id;
+  }
+  if (typeof record.token_uri === "string") {
+    key.token_uri = record.token_uri;
+  }
+  return key;
 }
 
 /**
  * Mint a Google access token from a service-account key via JWT bearer grant.
  * Mirrors local `gsc.sh` (RS256 JWT → oauth2.googleapis.com/token).
  */
-export async function mintGoogleServiceAccountAccessToken(input: {
-  serviceAccount: GoogleServiceAccountKey;
-  scope?: string;
-  fetcher: typeof fetch;
-  signal?: AbortSignal;
-  /** Force mint even if a cached token exists. */
-  forceRefresh?: boolean;
-  /** Injectable clock for tests. */
-  now?: () => number;
-}): Promise<string> {
+export async function mintGoogleServiceAccountAccessToken(
+  input: MintGoogleServiceAccountAccessTokenInput,
+): Promise<string> {
   const scope = input.scope ?? googleSearchConsoleServiceAccountScope;
   const nowMs = (input.now ?? Date.now)();
   const cacheKey = `${input.serviceAccount.client_email}\0${scope}`;
@@ -146,18 +181,15 @@ export async function mintGoogleServiceAccountAccessToken(input: {
 /**
  * Build a signed RS256 JWT assertion for the Google JWT-bearer grant.
  */
-export function createServiceAccountJwt(input: {
-  serviceAccount: GoogleServiceAccountKey;
-  scope: string;
-  nowSeconds: number;
-  lifetimeSeconds?: number;
-}): string {
+export function createServiceAccountJwt(input: CreateServiceAccountJwtInput): string {
   const lifetimeSeconds = input.lifetimeSeconds ?? 3600;
-  const header = {
+  const header: ServiceAccountJwtHeader = {
     alg: "RS256",
     typ: "JWT",
-    ...(input.serviceAccount.private_key_id ? { kid: input.serviceAccount.private_key_id } : {}),
   };
+  if (input.serviceAccount.private_key_id) {
+    header.kid = input.serviceAccount.private_key_id;
+  }
   const payload = {
     iss: input.serviceAccount.client_email,
     scope: input.scope,

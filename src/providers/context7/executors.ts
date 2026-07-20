@@ -223,7 +223,7 @@ function resolveContext7McpUrl(): string {
 }
 
 /**
- * Hosted Context7 MCP accepts several header names; prefer CONTEXT7_API_KEY per docs.
+ * Hosted Context7 MCP auth header preferred by docs/MCP clients.
  * @see https://context7.com/docs/howto/api-keys
  */
 export function context7AuthHeaders(apiKey: string | undefined): Record<string, string> {
@@ -233,7 +233,6 @@ export function context7AuthHeaders(apiKey: string | undefined): Record<string, 
   }
   return {
     CONTEXT7_API_KEY: key,
-    authorization: `Bearer ${key}`,
   };
 }
 

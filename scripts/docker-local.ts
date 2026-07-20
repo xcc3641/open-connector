@@ -34,7 +34,6 @@ interface ParsedArgs {
   noCache: boolean;
   followLogs: boolean;
   timeoutMs: number;
-  passthrough: string[];
 }
 
 function main(): void {
@@ -80,14 +79,9 @@ function parseArgs(argv: string[]): ParsedArgs {
   let noCache = false;
   let followLogs = false;
   let timeoutMs = defaultTimeoutMs;
-  const passthrough: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--") {
-      passthrough.push(...argv.slice(index + 1));
-      break;
-    }
     if (arg === "--no-cache") {
       noCache = true;
       continue;
@@ -132,7 +126,6 @@ function parseArgs(argv: string[]): ParsedArgs {
     noCache,
     followLogs,
     timeoutMs,
-    passthrough,
   };
 }
 

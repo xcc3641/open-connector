@@ -82,8 +82,8 @@ describe("Context7 provider MCP bridge", () => {
     for (const request of requests) {
       expect(request.headers).toMatchObject({
         context7_api_key: "ctx7sk-test-key",
-        authorization: "Bearer ctx7sk-test-key",
       });
+      expect(request.headers.authorization).toBeUndefined();
     }
   });
 

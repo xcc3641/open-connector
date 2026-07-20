@@ -1,5 +1,8 @@
 # Local source-built OpenConnector for day-to-day development.
 # Prefer: npm run docker:local
+#
+# Optional Proxyman bridge (only when you need the Proxyman provider):
+#   docker compose -f docker/local/compose.yml -f docker/local/compose.proxyman.yml up -d
 name: openconnector
 services:
   connector:
@@ -16,12 +19,10 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       OOMOL_CONNECT_DATA_DIR: /app/data
-      PROXYMAN_MCP_HTTP_HOST: host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - openconnector-data:/app/data
-      - "${HOME}/Library/Application Support/com.proxyman.NSProxy:/root/Library/Application Support/com.proxyman.NSProxy:ro"
 
 volumes:
   openconnector-data:

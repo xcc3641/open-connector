@@ -122,7 +122,16 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
     },
     async ({ query, connectedOnly, includeVirtual }) =>
       toolResult(
-        withUntrustedProviderContent(successPayload(await listApps(options, { query, connectedOnly, includeVirtual }))),
+        withUntrustedProviderContent(
+          successPayload(
+            await listApps(options, {
+              query,
+              // Re-assert defaults: MCP clients may omit optional fields even when Zod declares .default().
+              connectedOnly: connectedOnly ?? true,
+              includeVirtual: includeVirtual ?? false,
+            }),
+          ),
+        ),
       ),
   );
 
@@ -200,8 +209,10 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
 
 async function listApps(
   options: IMcpServerOptions,
-  input: { query?: string; connectedOnly: boolean; includeVirtual: boolean },
+  input: { query?: string; connectedOnly?: boolean; includeVirtual?: boolean },
 ): Promise<unknown> {
+  const connectedOnly = input.connectedOnly ?? true;
+  const includeVirtual = input.includeVirtual ?? false;
   const normalized = input.query?.trim().toLowerCase();
   const matchedProviders = options.catalog.providers.filter((provider) => {
     if (!normalized) {
@@ -228,7 +239,7 @@ async function listApps(
     }),
   );
 
-  if (!input.connectedOnly) {
+  if (!connectedOnly) {
     return apps;
   }
 
@@ -236,7 +247,7 @@ async function listApps(
     if (app.connection?.configured !== true) {
       return false;
     }
-    if (input.includeVirtual) {
+    if (includeVirtual) {
       return true;
     }
     // Soft-enabled no-auth providers are virtual; default list stays credential-backed only.
@@ -421,14 +432,17 @@ function errorPayload(code: string, message: string): ToolPayload {
 }
 
 function withUntrustedProviderContent(payload: ToolPayload, actionId?: string): ToolPayload {
+  const contentTrust: ContentTrust = {
+    level: "untrusted",
+    source: "external_provider",
+    warning: untrustedProviderWarning,
+  };
+  if (actionId) {
+    contentTrust.actionId = actionId;
+  }
   return {
     ...payload,
-    contentTrust: {
-      level: "untrusted",
-      source: "external_provider",
-      ...(actionId ? { actionId } : {}),
-      warning: untrustedProviderWarning,
-    },
+    contentTrust,
   };
 }
 

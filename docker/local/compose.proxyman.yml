@@ -1,0 +1,9 @@
+# Optional overlay: mount local Proxyman config into the container.
+# Usage:
+#   docker compose -f docker/local/compose.yml -f docker/local/compose.proxyman.yml up -d --build
+services:
+  connector:
+    environment:
+      PROXYMAN_MCP_HTTP_HOST: host.docker.internal
+    volumes:
+      - "${HOME}/Library/Application Support/com.proxyman.NSProxy:/root/Library/Application Support/com.proxyman.NSProxy:ro"

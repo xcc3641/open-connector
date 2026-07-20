@@ -23,7 +23,7 @@ export const provider: ProviderDefinition = {
       label: "API Key",
       placeholder: "ctx7sk-...",
       description:
-        "Optional Context7 API key for higher rate limits on the hosted MCP endpoint. Sent as the CONTEXT7_API_KEY header (also accepts Authorization: Bearer). Create one in the Context7 dashboard: https://context7.com/dashboard. Docs: https://context7.com/docs/howto/api-keys",
+        "Optional Context7 API key for higher rate limits on the hosted MCP endpoint. Sent as the CONTEXT7_API_KEY HTTP header (format ctx7sk-...). Create one in the Context7 dashboard: https://context7.com/dashboard. Docs: https://context7.com/docs/howto/api-keys",
     },
   ],
   homepageUrl: "https://context7.com",
