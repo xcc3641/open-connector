@@ -123,14 +123,15 @@ describe("MCP server", () => {
       const instructions = client.getInstructions();
 
       expect(instructions).toBeTypeOf("string");
-      expect(instructions).toContain("use list_connections before choosing among multiple accounts");
+      expect(instructions).toContain("never expose unconfigured credential-backed providers");
+      expect(instructions).toContain("Use list_connections before choosing among multiple configured accounts");
       expect(instructions).toContain("Call get_action_guide before execute_action");
     });
   });
 
-  it("defaults list_apps to credential-backed apps and can widen the surface", async () => {
+  it("lists configured apps by default and public no-auth apps only when requested", async () => {
     await withMcpClient(async (client) => {
-      const credentialsOnly = await client.callTool({
+      const defaults = await client.callTool({
         name: "list_apps",
         arguments: {},
       });
@@ -138,49 +139,66 @@ describe("MCP server", () => {
         name: "list_apps",
         arguments: { includeVirtual: true },
       });
-      const all = await client.callTool({
-        name: "list_apps",
-        arguments: { connectedOnly: false },
-      });
 
       // example is no_auth/virtual; locked needs a key and is not connected.
-      expect(credentialsOnly.structuredContent).toMatchObject({
-        ok: true,
-        data: [],
-      });
+      expect(defaults.structuredContent).toEqual({ ok: true, data: [] });
       expect(withVirtual.structuredContent).toMatchObject({
         ok: true,
-        data: [{ service: "example" }],
+        data: [{ service: "example", connection: { virtual: true, configured: true } }],
       });
       expect((withVirtual.structuredContent as { data: unknown[] }).data).toHaveLength(1);
-      expect(all.structuredContent).toMatchObject({
-        ok: true,
-        data: [{ service: "example" }, { service: "locked" }],
-      });
-      expect((all.structuredContent as { data: unknown[] }).data).toHaveLength(2);
     });
   });
 
-  it("includes stored credential connections in the default list_apps result", async () => {
+  it("includes stored credential connections in app and action discovery", async () => {
     await withAuthenticatedMcpClient(async (client) => {
-      const credentialsOnly = await client.callTool({
+      const apps = await client.callTool({
         name: "list_apps",
         arguments: {},
       });
+      const actions = await client.callTool({
+        name: "search_actions",
+        arguments: { query: "account", limit: 10 },
+      });
 
-      expect(credentialsOnly.structuredContent).toMatchObject({
+      expect(apps.structuredContent).toMatchObject({
         ok: true,
         data: [{ service: "example_auth", connection: { virtual: false, configured: true } }],
       });
-      expect((credentialsOnly.structuredContent as { data: unknown[] }).data).toHaveLength(1);
+      expect((apps.structuredContent as { data: unknown[] }).data).toHaveLength(1);
+      expect(actions.structuredContent).toMatchObject({
+        ok: true,
+        data: [{ id: "example_auth.get_account", service: "example_auth" }],
+      });
     });
   });
 
-  it("returns structured content for action search and execution", async () => {
+  it("excludes unconfigured credential-backed providers from action search", async () => {
+    await withMcpClient(async (client) => {
+      const defaults = await client.callTool({
+        name: "search_actions",
+        arguments: { query: "echo", limit: 10 },
+      });
+      const byQuery = await client.callTool({
+        name: "search_actions",
+        arguments: { query: "locked", limit: 10 },
+      });
+      const byService = await client.callTool({
+        name: "search_actions",
+        arguments: { service: "locked", limit: 10 },
+      });
+
+      expect(defaults.structuredContent).toEqual({ ok: true, data: [] });
+      expect(byQuery.structuredContent).toEqual({ ok: true, data: [] });
+      expect(byService.structuredContent).toEqual({ ok: true, data: [] });
+    });
+  });
+
+  it("returns structured content for available action search and execution", async () => {
     await withMcpClient(async (client) => {
       const search = await client.callTool({
         name: "search_actions",
-        arguments: { query: "echo", limit: 1 },
+        arguments: { query: "echo", includeVirtual: true, limit: 1 },
       });
       const run = await client.callTool({
         name: "execute_action",
@@ -410,6 +428,24 @@ describe("MCP server", () => {
         error: {
           code: "invalid_input",
           message: "Action input does not match the action schema.",
+        },
+      });
+    });
+  });
+
+  it("does not expose guides for unconfigured credential-backed providers", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: "get_action_guide",
+        arguments: { actionId: "locked.echo" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toEqual({
+        ok: false,
+        error: {
+          code: "connection_not_found",
+          message: "locked has no configured connection.",
         },
       });
     });

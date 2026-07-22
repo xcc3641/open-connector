@@ -23,6 +23,7 @@ export interface ActionSearchOptions {
   prefix?: boolean;
   boost?: Partial<Record<ActionSearchField, number>>;
   service?: string;
+  services?: ReadonlySet<string>;
 }
 
 export interface ActionSearchIndexProvider {
@@ -242,6 +243,7 @@ export function searchActions(
     prefix = true,
     boost,
     service,
+    services,
   } = options;
   const results = index.search(query, {
     fuzzy,
@@ -250,7 +252,10 @@ export function searchActions(
     boost: { ...DEFAULT_ACTION_SEARCH_BOOST, ...boost },
     weights: { fuzzy: 0.5, prefix: 0.1 },
     processTerm: searchProcessTerm,
-    filter: service ? (result) => result.service === service : undefined,
+    filter:
+      service || services
+        ? (result) => (!service || result.service === service) && (!services || services.has(result.service))
+        : undefined,
   });
   return results.slice(0, limit).map(toActionSearchResult);
 }

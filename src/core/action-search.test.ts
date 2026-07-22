@@ -84,4 +84,13 @@ describe("action search", () => {
       "github.create_issue",
     ]);
   });
+
+  it("filters by an allowed service set before applying the result limit", () => {
+    const catalog = createCatalogStore(providers, { executableActionIds: [] });
+    const index = buildActionSearchIndex(catalog.actions);
+
+    expect(
+      searchActions(index, "create send", { services: new Set(["gmail"]), limit: 10 }).map((action) => action.id),
+    ).toEqual(["gmail.send_email"]);
+  });
 });
