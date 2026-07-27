@@ -92,6 +92,7 @@ const crossOriginCredentialHeaders = new Set([
   "private-token",
   "x-private-token",
   "x-csrf-token",
+  "x-gotify-key",
   "x-xsrf-token",
   "x-goog-api-key",
   "x-acs-security-token",
@@ -294,6 +295,9 @@ async function assertResolvedAddressesAllowed(
     throw policy.createError(`${fieldName} could not be resolved for validation`);
   }
   if (!Array.isArray(results)) {
+    throw policy.createError(`${fieldName} could not be resolved for validation`);
+  }
+  if (results.length === 0) {
     throw policy.createError(`${fieldName} could not be resolved for validation`);
   }
   for (const entry of results) {

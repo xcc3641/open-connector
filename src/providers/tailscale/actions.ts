@@ -9,8 +9,8 @@ export const tailscaleActions: ActionDefinition[] = tailscaleOperations.map((ope
   defineProviderAction(service, {
     name: operation.name,
     description: operation.description,
-    requiredScopes: [...operation.requiredScopes],
-    providerPermissions: [...operation.requiredScopes],
+    requiredScopes: operation.requiredScopes,
+    providerPermissions: operation.requiredScopes,
     inputSchema: operation.inputSchema,
     outputSchema: operation.outputSchema,
   }),

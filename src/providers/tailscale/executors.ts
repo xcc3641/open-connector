@@ -33,9 +33,10 @@ interface TailscaleAccessToken {
   grantedScopes: string[];
 }
 
-const tailscaleActionHandlers = Object.fromEntries(
-  tailscaleOperations.map((operation) => [operation.name, createOperationHandler(operation)]),
-) as Record<string, ProviderRuntimeHandler<TailscaleContext>>;
+const tailscaleActionHandlers: Record<string, ProviderRuntimeHandler<TailscaleContext>> = {};
+for (const operation of tailscaleOperations) {
+  tailscaleActionHandlers[operation.name] = createOperationHandler(operation);
+}
 
 export const executors: ProviderExecutors = defineProviderExecutors<TailscaleContext>({
   service,
@@ -198,7 +199,7 @@ function readTailscaleContext(
   signal: AbortSignal | undefined,
   grantedScopes: readonly string[] = [],
 ): TailscaleContext {
-  const tailnet = optionalString(values.tailnet)?.trim() || defaultTailnet;
+  const tailnet = optionalString(values.tailnet) ?? defaultTailnet;
   return {
     clientId: requiredString(values.clientId, "clientId", (message) => new ProviderRequestError(400, message)),
     clientSecret: requiredString(

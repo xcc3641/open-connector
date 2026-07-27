@@ -248,25 +248,7 @@ const savedQueryWriteProperties = {
   ownerId: s.nullable(s.nonEmptyString("The owning Seq user identifier, or null to make the query shared.")),
 };
 
-type DatalustActionDefinitions = readonly [
-  ProviderActionDefinition<"search_events">,
-  ProviderActionDefinition<"get_event">,
-  ProviderActionDefinition<"execute_query">,
-  ProviderActionDefinition<"ingest_event">,
-  ProviderActionDefinition<"ingest_events">,
-  ProviderActionDefinition<"list_signals">,
-  ProviderActionDefinition<"get_signal">,
-  ProviderActionDefinition<"create_signal">,
-  ProviderActionDefinition<"update_signal">,
-  ProviderActionDefinition<"delete_signal">,
-  ProviderActionDefinition<"list_saved_queries">,
-  ProviderActionDefinition<"get_saved_query">,
-  ProviderActionDefinition<"create_saved_query">,
-  ProviderActionDefinition<"update_saved_query">,
-  ProviderActionDefinition<"delete_saved_query">,
-];
-
-export const datalustActions: DatalustActionDefinitions = [
+export const datalustActions: ProviderActionDefinition[] = [
   defineProviderAction(service, {
     name: "search_events",
     description: "Search a page of Seq events using a filter, signal, time range, or cursor.",
@@ -442,5 +424,3 @@ export const datalustActions: DatalustActionDefinitions = [
     ),
   }),
 ];
-
-export type DatalustActionName = (typeof datalustActions)[number]["name"];

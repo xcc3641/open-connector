@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { readBoundedResponseBytes } from "../../core/request.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -23,9 +23,7 @@ const defaultSourceUrl = `https://raw.githubusercontent.com/Dokploy/mcp/${dokplo
 const maxSourceBytes = 10 * 1024 * 1024;
 const localSourceArgument = process.argv[2];
 const sourcePath = localSourceArgument ? resolve(localSourceArgument) : undefined;
-const sourceLabel = sourcePath
-  ? relative(repositoryRoot, sourcePath)
-  : `Dokploy/mcp@${dokployMcpCommit}/src/generated/openapi.json`;
+const sourceLabel = `Dokploy/mcp@${dokployMcpCommit}/src/generated/openapi.json`;
 const outputDirectory = resolve(process.argv[3] ?? join(repositoryRoot, "src/providers/dokploy/operations"));
 const indexPath = join(repositoryRoot, "src/providers/dokploy/operations.ts");
 
@@ -152,18 +150,13 @@ const imports = moduleEntries
   .map(({ exportName, file }) => `import { ${exportName} } from "./operations/${file}";`)
   .join("\n");
 const arrays = moduleEntries.map(({ exportName }) => `  ${exportName},`).join("\n");
-const actionNameUnion = [...names]
-  .sort((left, right) => left.localeCompare(right))
-  .map((name) => `  | ${JSON.stringify(name)}`)
-  .join("\n");
 const indexSource =
   `// Generated in part by src/providers/dokploy/generate.ts.\n` +
   `import type { JsonSchema } from "../../core/types.ts";\n\n${imports}\n\n` +
   `export type DokployActionMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";\n` +
   `export type DokployOperationSupportStatus = "supported" | "unsupported";\n\n` +
-  `export type DokployActionName =\n${actionNameUnion};\n\n` +
   `export interface DokployOperationDefinition {\n` +
-  `  name: DokployActionName;\n  operationId?: string;\n  tag?: string;\n  description: string;\n` +
+  `  name: string;\n  operationId?: string;\n  tag?: string;\n  description: string;\n` +
   `  method: DokployActionMethod;\n  path: string;\n  pathFields: readonly string[];\n` +
   `  queryFields: readonly string[];\n  bodyFields: readonly string[];\n  fileFields?: readonly string[];\n` +
   `  contentType?: string | null;\n  supportStatus?: DokployOperationSupportStatus;\n` +

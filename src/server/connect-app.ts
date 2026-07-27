@@ -30,6 +30,7 @@ export interface ConnectAppOptions {
   registerStaticRoutes?: (app: Hono) => void;
   logger?: Logger;
   computeRuntimeAuthConfigured?: boolean;
+  compressApiResponses?: boolean;
 }
 
 export interface ConnectApp {
@@ -38,7 +39,7 @@ export interface ConnectApp {
 }
 
 export async function createConnectApp(options: ConnectAppOptions): Promise<ConnectApp> {
-  const runtimeTokens = new RuntimeTokenService(options.runtimeDatabase.runtimeTokenStore);
+  const runtimeTokens = new RuntimeTokenService(options.runtimeDatabase.runtimeTokenStore, options.logger);
   const hasStoredRuntimeTokens = async (): Promise<boolean> => (await runtimeTokens.listTokens()).length > 0;
   const oauthClientConfigs = new OAuthClientConfigService({
     catalog: options.catalog,
@@ -88,6 +89,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       },
       actionPolicy: options.actionPolicy,
       logger: options.logger,
+      compressApiResponses: options.compressApiResponses,
     }).createApp(),
     runtimeAuthConfigured:
       Boolean(options.runtimeToken) ||

@@ -155,10 +155,11 @@ async function requestBreezeArray(
   }
 
   return payload.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
+    const record = optionalRecord(item);
+    if (!record) {
       throw new ProviderRequestError(502, `Breeze response item at index ${index} must be an object`);
     }
-    return item as Record<string, unknown>;
+    return record;
   });
 }
 

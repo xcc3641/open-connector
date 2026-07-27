@@ -8,16 +8,28 @@ export const provider: ProviderDefinition = {
   service,
   displayName: "Speechmatics",
   description:
-    "Query Speechmatics workspace projects, live service capabilities, and documented cloud deployment endpoints.",
+    "Submit URL-based Batch transcriptions, poll job status, retrieve transcripts, and inspect Speechmatics capabilities and deployments.",
   categories: ["AI", "Developer Tools"],
   authTypes: ["api_key"],
   auth: [
     {
       type: "api_key",
-      label: "Management Token",
-      placeholder: "SPEECHMATICS_MANAGEMENT_TOKEN",
+      label: "API Key",
+      placeholder: "SPEECHMATICS_API_KEY",
       description:
-        "Speechmatics workspace Management Token sent as a Bearer token. Create one with View projects permission under Manage workspace > Management tokens in the Speechmatics Portal: https://portal.speechmatics.com.",
+        "Project-scoped Speechmatics API key used for Speech to Text requests. Create one in the active project: https://portal.speechmatics.com/settings/api-keys.",
+      extraFields: [
+        {
+          key: "defaultRegion",
+          label: "Default Batch Region",
+          inputType: "text",
+          required: false,
+          secret: false,
+          placeholder: "eu1",
+          description:
+            "Default Speechmatics Batch SaaS region. Supported values are eu1, eu2, us1, us2, and au1; actions may override it.",
+        },
+      ],
     },
   ],
   homepageUrl: "https://www.speechmatics.com/",

@@ -324,9 +324,9 @@ function createAliyunOssClient(input: AliyunClientOptions): AliyunOssClient {
   return new AliOss({
     accessKeyId: input.accessKeyId,
     accessKeySecret: input.accessKeySecret,
-    ...(input.securityToken ? { stsToken: input.securityToken } : {}),
+    stsToken: input.securityToken,
     endpoint: stripProtocol(normalizeEndpoint(input.endpoint)),
-    ...(input.bucket ? { bucket: input.bucket } : {}),
+    bucket: input.bucket,
     secure: true,
   }) as unknown as AliyunOssClient;
 }
@@ -681,11 +681,8 @@ function normalizeAliyunError(error: unknown, phase: "validate" | "execute"): Pr
 }
 
 function readAliyunErrorStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") {
-    return undefined;
-  }
-
-  const record = error as Record<string, unknown>;
+  const record = optionalRecord(error);
+  if (!record) return undefined;
   const status = record.status ?? record.statusCode ?? record.code;
   return typeof status === "number" ? status : undefined;
 }

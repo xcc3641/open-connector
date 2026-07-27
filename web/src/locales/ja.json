@@ -160,10 +160,23 @@
       "notUsed": "未使用"
     },
     "connection": "接続",
+    "connectionCount": "{{count}} 件の接続",
+    "savedConnections": "保存済みの接続",
+    "defaultConnection": "デフォルト",
+    "connectionName": "接続名",
+    "connectionNamePlaceholder": "例: work",
+    "connectionNameDescription": "アクションの実行時に、この名前でアカウントを選択します。",
+    "connectionNameErrors": {
+      "required": "接続名を入力してください。",
+      "invalid": "先頭は英数字とし、64文字以内の英数字、アンダースコア、ハイフンを使用してください。",
+      "duplicate": "この名前はすでに使用されています。既存の接続を選択して更新してください。"
+    },
     "connectionMethod": "接続方式",
     "connectionDescriptions": {
       "noSetup": "このプロバイダーはローカル認証情報なしで実行できます。",
+      "adding": "新しい名前付き接続を設定します。",
       "connected": "ローカル認証情報は {{authType}} で設定済みです。",
+      "saved": "保存済みの接続が {{count}} 件あります。管理する接続を選択するか、新しい接続を追加してください。",
       "oauthClientRequired": "{{name}} で OAuth を開始するには、ローカル OAuth client が必要です。",
       "notConnected": "認証情報が必要な {{name}} アクションを実行する前に、ローカル認証情報を設定してください。",
       "unavailable": "現在のランタイムでは接続を設定できません。"
@@ -202,6 +215,10 @@
       "configureOAuthClient": "OAuth Client を設定",
       "editOAuthClient": "OAuth Client を編集",
       "saveConnection": "接続を保存",
+      "addConnection": "接続を追加",
+      "cancel": "キャンセル",
+      "clearSelection": "選択を解除",
+      "selected": "選択中",
       "connect": "接続",
       "details": "詳細",
       "manageConnection": "管理",
@@ -232,6 +249,9 @@
     }
   },
   "actions": {
+    "connection": "接続",
+    "selectConnection": "接続を選択",
+    "connectionRequired": "このアクションを実行する接続を選択してください。",
     "searchPlaceholder": "名前、ID、プロバイダーでアクションを検索",
     "provider": "プロバイダー",
     "allProviders": "すべてのプロバイダー",
@@ -260,7 +280,8 @@
     "run": "実行",
     "running": "実行中",
     "runningAction": "アクションを実行中...",
-    "actionFailed": "アクションに失敗しました。"
+    "actionFailed": "アクションに失敗しました。",
+    "loadingDetails": "アクションの詳細を読み込み中..."
   },
   "runs": {
     "noRunsTitle": "実行履歴はまだありません",
@@ -368,7 +389,7 @@
         "withBlocked": "{{allow}} · 常に block: {{count}}"
       },
       "layerSummary": "Actions: {{action}} · Provider proxy: {{proxy}}",
-      "tokenSummary": "Allow rules {{allowed}} · Block rules {{blocked}} · Runtime ベースラインでさらに制限",
+      "tokenSummary": "Action allow rules {{allowed}} · Action block rules {{blocked}} · Proxy grants {{proxies}} · Runtime ベースラインでさらに制限",
       "editor": {
         "title": "Runtime policy を編集",
         "description": "保存前に deployment 制約と組み合わせて影響を確認します。",
@@ -412,7 +433,7 @@
         "noRules": "このリストに rules はありません。",
         "actionAllowRequired": "Action allow rule を追加するか、追加制限なしを選択してください。",
         "proxyAllowRequired": "Provider allow rule を追加するか、追加制限なしを選択してください。",
-        "tokenHint": "Token rules は deployment と runtime が許可する actions をさらに制限するだけで、proxy requests には影響しません。",
+        "tokenHint": "Action rules と proxy grants は独立しています。Proxy grant が空の場合、token は provider proxy requests を送信できません。",
         "discard": "変更を破棄",
         "preview": "影響をプレビュー"
       },

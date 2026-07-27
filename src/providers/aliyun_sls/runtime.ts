@@ -1,5 +1,4 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { AliyunSlsActionName } from "./actions.ts";
 import type { AliyunSlsCredential } from "./resources.ts";
 
 import { Buffer } from "node:buffer";
@@ -84,7 +83,7 @@ interface AliyunSlsHistogram {
 
 type AliyunSlsActionHandler = (input: Record<string, unknown>, context: AliyunSlsActionContext) => Promise<unknown>;
 
-export const aliyunSlsActionHandlers: Record<AliyunSlsActionName, AliyunSlsActionHandler> = {
+export const aliyunSlsActionHandlers: Record<string, AliyunSlsActionHandler> = {
   list_projects(input, context) {
     return listProjects(input, context);
   },
@@ -257,16 +256,20 @@ async function listProjectsAcrossRegions(
   }
   const projectName = optionalString(input.projectName);
   const resourceGroupId = optionalString(input.resourceGroupId);
-  const outcomes = await mapWithConcurrency(endpoints, regionalConcurrency, async (endpoint) => {
-    try {
-      return await listAllProjectsForEndpoint(context, endpoint, projectName, resourceGroupId);
-    } catch (error) {
-      return {
-        endpoint,
-        error: normalizeAliyunSlsRuntimeError(error, `list_projects failed for endpoint ${endpoint}`),
-      } satisfies AliyunSlsRegionFailure;
-    }
-  });
+  const outcomes = await mapWithConcurrency(
+    endpoints,
+    regionalConcurrency,
+    async (endpoint): Promise<AliyunSlsRegionSuccess | AliyunSlsRegionFailure> => {
+      try {
+        return await listAllProjectsForEndpoint(context, endpoint, projectName, resourceGroupId);
+      } catch (error) {
+        return {
+          endpoint,
+          error: normalizeAliyunSlsRuntimeError(error, `list_projects failed for endpoint ${endpoint}`),
+        };
+      }
+    },
+  );
   const failures = outcomes.filter((outcome): outcome is AliyunSlsRegionFailure => "error" in outcome);
   if (failures.length > 0 && input.allowPartial !== true) {
     throw failures[0]!.error;

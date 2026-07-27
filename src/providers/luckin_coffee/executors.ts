@@ -1,6 +1,5 @@
 import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
 import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { LuckinCoffeeActionName } from "./actions.ts";
 
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -13,7 +12,6 @@ import {
   providerUserAgent,
   ProviderRequestError,
 } from "../provider-runtime.ts";
-import { luckinMcpToolNames } from "./actions.ts";
 
 const service = "luckin_coffee";
 const luckinMcpOrigin = "https://gwmcp.lkcoffee.com";
@@ -24,11 +22,32 @@ type LuckinActionContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "s
 type LuckinActionHandler = (input: Record<string, unknown>, context: LuckinActionContext) => Promise<unknown>;
 type LuckinMcpToolResult = Awaited<ReturnType<Client["callTool"]>>;
 
-export const luckinActionHandlers: Record<string, LuckinActionHandler> = {};
-for (const toolName of luckinMcpToolNames) {
-  luckinActionHandlers[toolName] = (input: Record<string, unknown>, context: LuckinActionContext) =>
-    callLuckinMcpTool(context, toolName, input);
-}
+export const luckinActionHandlers: Record<string, LuckinActionHandler> = {
+  queryShopList(input, context) {
+    return callLuckinMcpTool(context, "queryShopList", input);
+  },
+  searchProductForMcp(input, context) {
+    return callLuckinMcpTool(context, "searchProductForMcp", input);
+  },
+  switchProduct(input, context) {
+    return callLuckinMcpTool(context, "switchProduct", input);
+  },
+  queryProductDetailInfo(input, context) {
+    return callLuckinMcpTool(context, "queryProductDetailInfo", input);
+  },
+  previewOrder(input, context) {
+    return callLuckinMcpTool(context, "previewOrder", input);
+  },
+  createOrder(input, context) {
+    return callLuckinMcpTool(context, "createOrder", input);
+  },
+  queryOrderDetailInfo(input, context) {
+    return callLuckinMcpTool(context, "queryOrderDetailInfo", input);
+  },
+  cancelOrder(input, context) {
+    return callLuckinMcpTool(context, "cancelOrder", input);
+  },
+};
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, luckinActionHandlers);
 
@@ -73,7 +92,7 @@ async function listLuckinMcpTools(input: {
 
 async function callLuckinMcpTool(
   context: LuckinActionContext,
-  toolName: LuckinCoffeeActionName,
+  toolName: string,
   argumentsInput: Record<string, unknown>,
 ): Promise<unknown> {
   return withLuckinMcpClient(context, async (client) => {

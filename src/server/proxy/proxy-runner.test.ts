@@ -44,7 +44,7 @@ describe("ProxyRunner", () => {
     await expect(
       runner.run({
         service: "example",
-        input: { endpoint: "/anything", method: "GET" },
+        input: null,
       }),
     ).resolves.toMatchObject({
       ok: false,
@@ -99,7 +99,7 @@ describe("ProxyRunner", () => {
         allowedProxies: [],
         blockedProxies: ["example"],
       },
-      { allowedActions: [], blockedActions: ["example.*"] },
+      { allowedActions: [], blockedActions: ["example.*"], allowedProxies: ["example"] },
     );
 
     await expect(
@@ -107,6 +107,36 @@ describe("ProxyRunner", () => {
     ).resolves.toMatchObject({
       ok: false,
       errorCode: "proxy_blocked",
+    });
+    expect(loadProxyExecutor).not.toHaveBeenCalled();
+  });
+
+  it("does not load a proxy executor without a runtime token proxy grant", async () => {
+    const loadProxyExecutor = vi.fn();
+    const actionPolicy = new ActionPolicyService({ allowedProxies: ["example"] });
+    const runner = createRunner({
+      actionPolicy,
+      providerLoader: {
+        loadActionExecutor: async () => undefined,
+        loadCredentialValidators: async () => undefined,
+        loadProxyExecutor,
+      },
+    });
+    const policy = actionPolicy.createSnapshot(
+      {
+        allowedActions: [],
+        blockedActions: [],
+        allowedProxies: ["example"],
+        blockedProxies: [],
+      },
+      { allowedActions: ["*"], blockedActions: [], allowedProxies: [] },
+    );
+
+    await expect(
+      runner.run({ service: "example", input: { endpoint: "/items", method: "GET" }, policy }),
+    ).resolves.toMatchObject({
+      ok: false,
+      errorCode: "proxy_not_allowed",
     });
     expect(loadProxyExecutor).not.toHaveBeenCalled();
   });
@@ -253,6 +283,73 @@ describe("ProxyRunner", () => {
       message: "GET and HEAD proxy requests must not include a body.",
     });
     expect(proxy).not.toHaveBeenCalled();
+  });
+
+  it.each(["query", "headers"])("rejects a non-object %s field instead of silently dropping it", async (field) => {
+    const proxy: ProviderProxyExecutor = vi.fn(
+      async (): Promise<ProxyExecutionResult> => ({
+        ok: true,
+        response: { status: 200, headers: {}, data: null },
+      }),
+    );
+    const runner = createRunner({ providerLoader: new TestProviderLoader(proxy) });
+
+    await expect(
+      runner.run({
+        service: "example",
+        input: { endpoint: "/items", method: "POST", [field]: "not-an-object" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 400,
+      errorCode: "invalid_input",
+      message: `${field} must be an object`,
+    });
+    expect(proxy).not.toHaveBeenCalled();
+  });
+
+  it("maps unexpected executor failures to a stable runtime failure", async () => {
+    const runner = createRunner({
+      providerLoader: new TestProviderLoader(async () => {
+        throw new Error("provider secret leaked in an exception");
+      }),
+    });
+
+    await expect(
+      runner.run({
+        service: "example",
+        input: { endpoint: "/items", method: "GET" },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 500,
+      errorCode: "internal_error",
+      message: "Proxy request failed unexpectedly.",
+      meta: { service: "example" },
+    });
+  });
+
+  it("maps unexpected executor-loading failures to a stable runtime failure", async () => {
+    const runner = createRunner({
+      providerLoader: {
+        loadActionExecutor: async () => undefined,
+        loadCredentialValidators: async () => undefined,
+        loadProxyExecutor: async () => {
+          throw new Error("module failed to load");
+        },
+      },
+    });
+
+    await expect(
+      runner.run({
+        service: "example",
+        input: { endpoint: "/items", method: "GET" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 500,
+      errorCode: "internal_error",
+    });
   });
 
   it("logs proxy endpoints without query strings", async () => {

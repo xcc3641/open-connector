@@ -1,5 +1,4 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { JumpServerActionName } from "./actions.ts";
 
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -107,7 +106,7 @@ async function listJumpServerMcpTools(context: JumpServerMcpContext): Promise<st
 
 async function callJumpServerMcpTool(
   context: JumpServerMcpContext,
-  toolName: JumpServerActionName,
+  toolName: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
   return withJumpServerMcpClient(context, async (client) => {

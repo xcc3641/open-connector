@@ -160,10 +160,23 @@
       "notUsed": "Не используется"
     },
     "connection": "Подключение",
+    "connectionCount": "Подключений: {{count}}",
+    "savedConnections": "Сохраненные подключения",
+    "defaultConnection": "По умолчанию",
+    "connectionName": "Имя подключения",
+    "connectionNamePlaceholder": "например, work",
+    "connectionNameDescription": "Используйте это имя для выбора аккаунта при запуске действий.",
+    "connectionNameErrors": {
+      "required": "Введите имя подключения.",
+      "invalid": "Начните с буквы или цифры и используйте не более 64 букв, цифр, знаков подчеркивания или дефисов.",
+      "duplicate": "Это имя уже используется. Выберите это подключение, чтобы обновить его."
+    },
     "connectionMethod": "Способ подключения",
     "connectionDescriptions": {
       "noSetup": "Этот провайдер может работать без локальных учетных данных.",
+      "adding": "Настройте новое именованное подключение.",
       "connected": "Локальные учетные данные настроены через {{authType}}.",
+      "saved": "Сохранено подключений: {{count}}. Выберите подключение для управления или добавьте новое.",
       "oauthClientRequired": "{{name}} требует локальный OAuth client перед запуском OAuth.",
       "notConnected": "Настройте локальные учетные данные перед запуском действий {{name}}, которым они нужны.",
       "unavailable": "Подключения нельзя настроить в текущей среде выполнения."
@@ -202,6 +215,10 @@
       "configureOAuthClient": "Настроить OAuth Client",
       "editOAuthClient": "Изменить OAuth Client",
       "saveConnection": "Сохранить подключение",
+      "addConnection": "Добавить подключение",
+      "cancel": "Отмена",
+      "clearSelection": "Снять выбор",
+      "selected": "Выбрано",
       "connect": "Подключить",
       "details": "Детали",
       "manageConnection": "Управлять",
@@ -232,6 +249,9 @@
     }
   },
   "actions": {
+    "connection": "Подключение",
+    "selectConnection": "Выберите подключение",
+    "connectionRequired": "Выберите подключение для выполнения этого действия.",
     "searchPlaceholder": "Искать действия по имени, ID или провайдеру",
     "provider": "Провайдер",
     "allProviders": "Все провайдеры",
@@ -260,7 +280,8 @@
     "run": "Запустить",
     "running": "Выполняется",
     "runningAction": "Выполнение действия...",
-    "actionFailed": "Действие завершилось ошибкой."
+    "actionFailed": "Действие завершилось ошибкой.",
+    "loadingDetails": "Загрузка сведений о действии..."
   },
   "runs": {
     "noRunsTitle": "Запусков пока нет",
@@ -368,7 +389,7 @@
         "withBlocked": "{{allow}} · Всегда блокировать: {{count}}"
       },
       "layerSummary": "Actions: {{action}} · Provider proxy: {{proxy}}",
-      "tokenSummary": "Allow rules: {{allowed}} · Block rules: {{blocked}} · Дополнительно ограничено runtime-базой",
+      "tokenSummary": "Action allow rules: {{allowed}} · Action block rules: {{blocked}} · Proxy grants: {{proxies}} · Дополнительно ограничено runtime-базой",
       "editor": {
         "title": "Изменить runtime policy",
         "description": "Перед сохранением изменения проверяются вместе с ограничениями deployment.",
@@ -412,7 +433,7 @@
         "noRules": "В этом списке нет rules.",
         "actionAllowRequired": "Добавьте action allow rule или выберите отсутствие дополнительных ограничений.",
         "proxyAllowRequired": "Добавьте provider allow rule или выберите отсутствие дополнительных ограничений.",
-        "tokenHint": "Token rules могут только дополнительно ограничивать actions и не влияют на provider proxy requests.",
+        "tokenHint": "Action rules и proxy grants независимы. Пустой список proxy grants запрещает token отправлять provider proxy requests.",
         "discard": "Отменить изменения",
         "preview": "Предпросмотр влияния"
       },

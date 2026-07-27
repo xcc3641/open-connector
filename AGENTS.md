@@ -29,6 +29,7 @@
 ## Providers
 
 - Provider code normally lives in `src/providers/<service>/definition.ts`, `actions.ts`, `executors.ts`, and provider-local runtime helper files when needed.
+- When purely migrating a provider from the OOMOL-hosted connector, do not copy or add provider-local tests because the source repository already owns that regression coverage. Tests may be removed from this repository after an OSS-originated provider change is reverse-ported and covered in private. Keep open-source-only shared-infrastructure tests beside the shared module rather than inside a provider directory.
 - Prefer provider-local constants for official scopes, permissions, URLs, and API versions. Action `requiredScopes` should use provider-native scopes/capabilities, not private internal aliases.
 - Avoid repeated action-name wiring. Define action handlers once and derive executor maps through shared provider runtime helpers when an existing helper fits. Do not add provider-local action-name unions, tuple builders, or casts solely to prove the handler keys to TypeScript.
 - Do not import provider definitions from executor modules just to reuse metadata; inject catalog metadata from the server/loader side when needed.

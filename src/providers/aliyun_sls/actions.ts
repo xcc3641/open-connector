@@ -86,13 +86,6 @@ const queryTimeProperties: Record<string, JsonSchema> = {
   query: s.string("An optional Simple Log Service search or analytic statement."),
 };
 
-export type AliyunSlsActionName =
-  | "list_projects"
-  | "list_projects_across_regions"
-  | "list_logstores"
-  | "query_logs"
-  | "get_histograms";
-
 export const aliyunSlsActions: ActionDefinition[] = [
   defineProviderAction(service, {
     name: "list_projects",

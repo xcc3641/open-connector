@@ -160,10 +160,23 @@
       "notUsed": "Non utilisé"
     },
     "connection": "Connexion",
+    "connectionCount": "{{count}} connexions",
+    "savedConnections": "Connexions enregistrées",
+    "defaultConnection": "Par défaut",
+    "connectionName": "Nom de la connexion",
+    "connectionNamePlaceholder": "par exemple, work",
+    "connectionNameDescription": "Utilisez ce nom pour sélectionner le compte lors de l’exécution d’actions.",
+    "connectionNameErrors": {
+      "required": "Saisissez un nom de connexion.",
+      "invalid": "Commencez par une lettre ou un chiffre et utilisez au plus 64 lettres, chiffres, tirets bas ou tirets.",
+      "duplicate": "Ce nom est déjà utilisé. Sélectionnez cette connexion pour la mettre à jour."
+    },
     "connectionMethod": "Méthode de connexion",
     "connectionDescriptions": {
       "noSetup": "Ce fournisseur peut s’exécuter sans identifiants locaux.",
+      "adding": "Configurez une nouvelle connexion nommée.",
       "connected": "Les identifiants locaux sont configurés avec {{authType}}.",
+      "saved": "Connexions enregistrées : {{count}}. Sélectionnez-en une à gérer ou ajoutez-en une autre.",
       "oauthClientRequired": "{{name}} nécessite un client OAuth local avant de lancer OAuth.",
       "notConnected": "Configurez des identifiants locaux avant d’exécuter les actions {{name}} qui en ont besoin.",
       "unavailable": "Les connexions ne peuvent pas être configurées dans l’environnement d’exécution actuel."
@@ -202,6 +215,10 @@
       "configureOAuthClient": "Configurer le client OAuth",
       "editOAuthClient": "Modifier le client OAuth",
       "saveConnection": "Enregistrer la connexion",
+      "addConnection": "Ajouter une connexion",
+      "cancel": "Annuler",
+      "clearSelection": "Annuler la sélection",
+      "selected": "Sélectionnée",
       "connect": "Connecter",
       "details": "Détails",
       "manageConnection": "Gérer",
@@ -232,6 +249,9 @@
     }
   },
   "actions": {
+    "connection": "Connexion",
+    "selectConnection": "Sélectionner une connexion",
+    "connectionRequired": "Choisissez la connexion qui doit exécuter cette action.",
     "searchPlaceholder": "Rechercher des actions par nom, ID ou fournisseur",
     "provider": "Fournisseur",
     "allProviders": "Tous les fournisseurs",
@@ -260,7 +280,8 @@
     "run": "Exécuter",
     "running": "Exécution",
     "runningAction": "Exécution de l’action...",
-    "actionFailed": "Échec de l’action."
+    "actionFailed": "Échec de l’action.",
+    "loadingDetails": "Chargement des détails de l’action…"
   },
   "runs": {
     "noRunsTitle": "Aucune exécution",
@@ -368,7 +389,7 @@
         "withBlocked": "{{allow}} · Toujours bloquer : {{count}}"
       },
       "layerSummary": "Actions : {{action}} · Proxy fournisseur : {{proxy}}",
-      "tokenSummary": "Règles d’autorisation {{allowed}} · Blocage {{blocked}} · Encore limité par la référence runtime",
+      "tokenSummary": "Actions autorisées {{allowed}} · Actions bloquées {{blocked}} · Accès proxy {{proxies}} · Encore limité par la référence runtime",
       "editor": {
         "title": "Modifier la politique runtime",
         "description": "L’impact des modifications est prévisualisé avec les contraintes de déploiement.",
@@ -412,7 +433,7 @@
         "noRules": "Aucune règle dans cette liste.",
         "actionAllowRequired": "Ajoutez une règle d’action ou choisissez aucune restriction supplémentaire.",
         "proxyAllowRequired": "Ajoutez une règle de fournisseur ou choisissez aucune restriction supplémentaire.",
-        "tokenHint": "Les règles du token peuvent seulement restreindre davantage les actions autorisées. Elles n’affectent pas les requêtes proxy.",
+        "tokenHint": "Les règles d’action et les autorisations proxy sont indépendantes. Une liste proxy vide interdit les requêtes proxy du token.",
         "discard": "Abandonner les modifications",
         "preview": "Prévisualiser l’impact"
       },

@@ -518,8 +518,12 @@ export function createProviderTimeout(parentSignal: AbortSignal | undefined, tim
     timeoutReached = true;
     controller.abort();
   }, timeoutMs);
-  const abortFromParent = (): void => controller.abort();
-  parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  const abortFromParent = (): void => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) {
+    abortFromParent();
+  } else {
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  }
   return {
     signal: controller.signal,
     didTimeout: () => timeoutReached,

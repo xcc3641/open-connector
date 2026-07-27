@@ -3,6 +3,34 @@ import type { ActionDefinition, JsonSchema } from "../../core/types.ts";
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
 import { feishuProviderScopes } from "./scopes.ts";
+import { createFeishuApplicationActions } from "./shared/application-actions.ts";
+import { createFeishuApprovalActions } from "./shared/approval-actions.ts";
+import { createFeishuAttendanceActions } from "./shared/attendance-actions.ts";
+import { createFeishuBaseActions } from "./shared/base-actions.ts";
+import { createFeishuBaseAdvancedActions } from "./shared/base-advanced-actions.ts";
+import { createFeishuCalendarActions } from "./shared/calendar-actions.ts";
+import { createFeishuContactActions } from "./shared/contact-actions.ts";
+import { createFeishuDocsActions } from "./shared/docs-actions.ts";
+import { createFeishuDomainMediaActions } from "./shared/domain-media-actions.ts";
+import { createFeishuDriveActions } from "./shared/drive-actions.ts";
+import { createFeishuDriveAdvancedActions } from "./shared/drive-advanced-actions.ts";
+import { createFeishuFileActions } from "./shared/file-actions.ts";
+import { createFeishuImActions } from "./shared/im-actions.ts";
+import { createFeishuImOrganizeActions } from "./shared/im-organize-actions.ts";
+import { createFeishuImUserActions } from "./shared/im-user-actions.ts";
+import { createFeishuMailActions } from "./shared/mail-actions.ts";
+import { createFeishuMailAdvancedActions } from "./shared/mail-advanced-actions.ts";
+import { createFeishuMarkdownActions } from "./shared/markdown-actions.ts";
+import { createFeishuMinutesActions } from "./shared/minutes-actions.ts";
+import { createFeishuNoteActions } from "./shared/note-actions.ts";
+import { createFeishuOkrActions } from "./shared/okr-actions.ts";
+import { createFeishuSheetsActions } from "./shared/sheets-actions.ts";
+import { createFeishuSheetsAdvancedActions } from "./shared/sheets-advanced-actions.ts";
+import { createFeishuSlidesActions } from "./shared/slides-actions.ts";
+import { createFeishuTaskActions } from "./shared/task-actions.ts";
+import { createFeishuVcActions } from "./shared/vc-actions.ts";
+import { createFeishuWhiteboardActions } from "./shared/whiteboard-actions.ts";
+import { createFeishuWikiActions } from "./shared/wiki-actions.ts";
 
 const service = "feishu";
 
@@ -58,6 +86,7 @@ export const feishuActions: ActionDefinition[] = [
     name: "get_document",
     description: "Get a Feishu docx document's basic metadata (title and revision) that the authorized user can read.",
     requiredScopes: [feishuProviderScopes.docxReadonly],
+    providerPermissions: [feishuProviderScopes.docxReadonly],
     inputSchema: s.object("Identify the document to read.", { documentId: docxIdField }),
     outputSchema: feishuDocumentSchema,
   }),
@@ -65,6 +94,7 @@ export const feishuActions: ActionDefinition[] = [
     name: "get_document_content",
     description: "Read the full plain-text content of a Feishu docx document the authorized user can access.",
     requiredScopes: [feishuProviderScopes.docxReadonly],
+    providerPermissions: [feishuProviderScopes.docxReadonly],
     inputSchema: s.object(
       "Identify the document to read.",
       {
@@ -83,6 +113,7 @@ export const feishuActions: ActionDefinition[] = [
     description:
       "List a Feishu docx document's structured blocks (one page), for reading document structure and rich content.",
     requiredScopes: [feishuProviderScopes.docxReadonly],
+    providerPermissions: [feishuProviderScopes.docxReadonly],
     inputSchema: s.object(
       "Identify the document and page through its blocks.",
       {
@@ -102,6 +133,7 @@ export const feishuActions: ActionDefinition[] = [
     name: "list_bitable_tables",
     description: "List the data tables in a Feishu Bitable (多维表格) the authorized user can access.",
     requiredScopes: [feishuProviderScopes.bitableAppReadonly],
+    providerPermissions: [feishuProviderScopes.bitableAppReadonly],
     inputSchema: s.object(
       "Identify the Bitable app and page through its tables.",
       {
@@ -117,6 +149,7 @@ export const feishuActions: ActionDefinition[] = [
     name: "list_bitable_fields",
     description: "List the fields (columns) of a Feishu Bitable table, to understand its schema before reading rows.",
     requiredScopes: [feishuProviderScopes.bitableAppReadonly],
+    providerPermissions: [feishuProviderScopes.bitableAppReadonly],
     inputSchema: s.object(
       "Identify the Bitable table and page through its fields.",
       {
@@ -137,6 +170,7 @@ export const feishuActions: ActionDefinition[] = [
     name: "search_bitable_records",
     description: "Read rows (records) from a Feishu Bitable table, with optional field selection, filter, and sort.",
     requiredScopes: [feishuProviderScopes.bitableAppReadonly],
+    providerPermissions: [feishuProviderScopes.bitableAppReadonly],
     inputSchema: s.object(
       "Identify the Bitable table and query its records.",
       {
@@ -164,4 +198,44 @@ export const feishuActions: ActionDefinition[] = [
     ),
     outputSchema: feishuPageSchema("A page of Bitable records.", "A Bitable record {record_id, fields}."),
   }),
+  ...createFeishuContactActions({
+    service,
+    identity: "user",
+  }),
+  ...createFeishuImActions({
+    service,
+    identity: "user",
+  }),
+  ...createFeishuImUserActions(service),
+  ...createFeishuImOrganizeActions(service),
+  ...createFeishuBaseActions(service),
+  ...createFeishuBaseAdvancedActions(service),
+  ...createFeishuCalendarActions(service),
+  ...createFeishuTaskActions(service),
+  ...createFeishuWikiActions(service),
+  ...createFeishuDocsActions(service),
+  ...createFeishuDriveActions(service),
+  ...createFeishuDriveAdvancedActions({
+    service,
+    identity: "user",
+  }),
+  ...createFeishuSlidesActions(service),
+  ...createFeishuWhiteboardActions(service),
+  ...createFeishuAttendanceActions(service),
+  ...createFeishuSheetsActions(service),
+  ...createFeishuSheetsAdvancedActions(service),
+  ...createFeishuApprovalActions(service),
+  ...createFeishuMailActions(service),
+  ...createFeishuMailAdvancedActions(service),
+  ...createFeishuMinutesActions(service),
+  ...createFeishuNoteActions(service),
+  ...createFeishuOkrActions(service),
+  ...createFeishuFileActions(service),
+  ...createFeishuVcActions({
+    service,
+    identity: "user",
+  }),
+  ...createFeishuApplicationActions(service),
+  ...createFeishuMarkdownActions(service),
+  ...createFeishuDomainMediaActions(service),
 ];

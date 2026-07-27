@@ -484,19 +484,3 @@ export const baiduMapsActions: ActionDefinition[] = [
     }),
   ),
 ];
-
-export type BaiduMapsActionName =
-  | "geocode"
-  | "reverse_geocode"
-  | "search_places"
-  | "search_places_around"
-  | "search_places_polygon"
-  | "get_place_detail"
-  | "input_tips"
-  | "ip_locate"
-  | "district_search"
-  | "weather"
-  | "route_driving"
-  | "route_walking"
-  | "route_bicycling"
-  | "route_transit";

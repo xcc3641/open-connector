@@ -10,6 +10,7 @@ import {
   compactObject,
   optionalBoolean,
   optionalIntegerLike,
+  optionalRecord,
   optionalString as asOptionalString,
 } from "../../core/cast.ts";
 import { assertPublicHttpUrl, isPrivateNetworkAccessAllowed } from "../../core/request.ts";
@@ -342,11 +343,8 @@ function extractGitlabErrorMessage(payload: unknown): string | undefined {
   if (typeof payload === "string") {
     return payload;
   }
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-
-  const record = payload as Record<string, unknown>;
+  const record = optionalRecord(payload);
+  if (!record) return undefined;
   const message = record.message ?? record.error ?? record.error_description;
   if (typeof message === "string") {
     return message;
@@ -354,8 +352,9 @@ function extractGitlabErrorMessage(payload: unknown): string | undefined {
   if (Array.isArray(message)) {
     return message.map(String).join(", ");
   }
-  if (message && typeof message === "object") {
-    return Object.entries(message as Record<string, unknown>)
+  const messageRecord = optionalRecord(message);
+  if (messageRecord) {
+    return Object.entries(messageRecord)
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
       .join("; ");
   }
@@ -371,8 +370,7 @@ function readProjectId(input: GitlabActionInput): string {
 }
 
 function trimOptionalString(value: unknown): string | undefined {
-  const text = asOptionalString(value)?.trim();
-  return text || undefined;
+  return asOptionalString(value);
 }
 
 function readOptionalPrimitive(value: unknown): string | undefined {
@@ -386,7 +384,7 @@ function readOptionalPrimitive(value: unknown): string | undefined {
 }
 
 function asGitlabObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return optionalRecord(value) ?? {};
 }
 
 function readPagination(headers: Headers): {

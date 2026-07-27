@@ -32,4 +32,44 @@ describe("catalog store", () => {
     );
     expect(catalog.providers.find((provider) => provider.service === "plain")).not.toHaveProperty("description");
   });
+
+  it("builds provider summaries that drop action schemas but keep metadata", () => {
+    const providers: ProviderDefinition[] = [
+      {
+        service: "example",
+        displayName: "Example",
+        categories: ["Developer Tools"],
+        authTypes: ["no_auth"],
+        auth: [{ type: "no_auth" }],
+        actions: [
+          {
+            id: "example.ping",
+            service: "example",
+            name: "ping",
+            description: "Ping the service.",
+            requiredScopes: ["read"],
+            providerPermissions: [],
+            inputSchema: { type: "object", properties: { message: { type: "string" } } },
+            outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+          },
+        ],
+      },
+    ];
+
+    const catalog = createCatalogStore(providers, { executableActionIds: ["example.ping"] });
+    const summary = catalog.providerSummaries[0];
+    const summarizedAction = summary?.actions[0];
+
+    expect(summarizedAction).not.toHaveProperty("inputSchema");
+    expect(summarizedAction).not.toHaveProperty("outputSchema");
+    expect(summarizedAction?.id).toBe("example.ping");
+    expect(summarizedAction?.requiredScopes).toEqual(["read"]);
+    expect(summarizedAction?.execution.locallyExecutable).toBe(true);
+    expect(summary?.execution.actionCount).toBe(1);
+    // The full catalog still carries schemas for /api/actions/:actionId.
+    expect(catalog.actionsById.get("example.ping")?.inputSchema).toEqual({
+      type: "object",
+      properties: { message: { type: "string" } },
+    });
+  });
 });

@@ -163,8 +163,12 @@ export const jsonSchema = {
     return withOptions({ type: "string", pattern }, options);
   },
 
-  stringEnum(valuesOrDescription: string[] | string, optionsOrValues: JsonSchemaOptions | string[] = {}): JsonSchema {
-    const values = typeof valuesOrDescription === "string" ? (optionsOrValues as string[]) : valuesOrDescription;
+  stringEnum(
+    valuesOrDescription: readonly string[] | string,
+    optionsOrValues: JsonSchemaOptions | readonly string[] = {},
+  ): JsonSchema {
+    const values =
+      typeof valuesOrDescription === "string" ? (optionsOrValues as readonly string[]) : valuesOrDescription;
     const options =
       typeof valuesOrDescription === "string"
         ? { description: valuesOrDescription }
@@ -269,14 +273,12 @@ export const jsonSchema = {
   ): JsonSchema {
     const properties =
       typeof propertiesOrDescription === "string"
-        ? isJsonSchemaOptions(optionsOrProperties)
-          ? {}
-          : optionsOrProperties
+        ? (optionsOrProperties as Record<string, JsonSchema>)
         : propertiesOrDescription;
     const resolvedOptions =
       typeof propertiesOrDescription === "string"
         ? {
-            ...(isJsonSchemaOptions(optionsOrProperties) ? optionsOrProperties : maybeOptions),
+            ...maybeOptions,
             description: propertiesOrDescription,
           }
         : (optionsOrProperties as JsonSchemaOptions);
@@ -346,8 +348,4 @@ function withOptions(schema: JsonSchema, options: JsonSchemaOptions): JsonSchema
   if (options.default !== undefined) schema.default = options.default;
   if (options.format) schema.format = options.format;
   return schema;
-}
-
-function isJsonSchemaOptions(value: JsonSchemaOptions | Record<string, JsonSchema>): value is JsonSchemaOptions {
-  return "description" in value || "default" in value || "format" in value;
 }

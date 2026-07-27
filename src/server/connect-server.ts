@@ -16,6 +16,7 @@ import type { Context } from "hono";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { ConnectionError, defaultConnectionName } from "../connection-service.ts";
 import { ActionPolicyService, emptyPolicyRules } from "../core/action-policy.ts";
 import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
@@ -37,7 +38,7 @@ import { getResponseCachePolicy } from "./api/cache-policy.ts";
 import { HttpRequestError, internalError, jsonError, notFound, readJsonBody } from "./api/http-utils.ts";
 import { renderOAuthCompletionPage } from "./api/oauth-completion-page.ts";
 import { createOpenApiDocument } from "./api/openapi.ts";
-import { policyRequestMaxBytes, readRuntimePolicyRules, readTokenActionPolicy } from "./api/policy-input.ts";
+import { policyRequestMaxBytes, readRuntimePolicyRules, readTokenPolicy } from "./api/policy-input.ts";
 import {
   mapConnectionErrorStatus,
   serializeRuntimeAction,
@@ -74,6 +75,7 @@ export interface IConnectServerOptions {
   actionSearch?: ActionSearchIndexProvider;
   registerStaticRoutes?: (app: Hono) => void;
   logger?: Logger;
+  compressApiResponses?: boolean;
 }
 
 /**
@@ -118,6 +120,13 @@ export class ConnectServer {
       }
     });
     app.get("/health", (context) => context.json({ ok: true }));
+    if (this.options.compressApiResponses !== false) {
+      // Compress dashboard JSON responses. Scoped to /api/* so the streaming
+      // /mcp transport and /v1/proxy pass-through are never buffered/re-encoded.
+      // The middleware's content-type filter already skips non-text bodies
+      // (e.g. transit file downloads).
+      app.use("/api/*", compress());
+    }
     app.use("*", createLocalAuthMiddleware(auth));
     app.get("/v1/health", (context) => writeRuntimeSuccess(context, { ok: true, runtime: "oomol-connect" }));
     app.get("/v1/providers", (context) => this.listRuntimeProviders(context));
@@ -156,7 +165,11 @@ export class ConnectServer {
       }),
     );
 
-    app.get("/api/providers", (context) => context.json(this.options.catalog.providers));
+    // Schema-free listing. The action detail view loads full schemas on demand
+    // from /api/actions/:actionId. The catalog is immutable at runtime, so the
+    // body and its ETag are precomputed and reused, and unchanged reloads get a
+    // 304 instead of re-downloading the payload.
+    app.get("/api/providers", (context) => this.listProviderSummaries(context));
     app.get("/api/providers/:service", (context) => this.getProvider(context, context.req.param("service")));
 
     app.get("/api/actions", (context) => context.json(this.options.catalog.actions));
@@ -215,6 +228,15 @@ export class ConnectServer {
     });
 
     return app;
+  }
+
+  private listProviderSummaries(context: Context): Response {
+    const { providerSummariesJson, providerSummariesEtag } = this.options.catalog;
+    context.header("ETag", providerSummariesEtag);
+    if (requestMatchesEtag(context.req.header("If-None-Match"), providerSummariesEtag)) {
+      return context.body(null, 304);
+    }
+    return context.body(providerSummariesJson, 200, { "Content-Type": "application/json" });
   }
 
   private getProvider(context: Context, service: string): Response {
@@ -315,18 +337,31 @@ export class ConnectServer {
       return notFound(context);
     }
 
-    const policy = (await this.getPolicySnapshot(context)).evaluate(action);
-    return context.text(
-      renderActionMarkdown(action, {
-        connection: await this.options.connections.getConnectionSummary(action.service, readConnectionName(context)),
-        providerPermissions: action.providerPermissions,
-        policy,
-      }),
-      200,
-      {
-        "content-type": "text/markdown; charset=utf-8",
-      },
-    );
+    try {
+      const policy = (await this.getPolicySnapshot(context)).evaluate(action);
+      return context.text(
+        renderActionMarkdown(action, {
+          connection: await this.options.connections.getConnectionSummary(action.service, readConnectionName(context)),
+          providerPermissions: action.providerPermissions,
+          policy,
+        }),
+        200,
+        {
+          "content-type": "text/markdown; charset=utf-8",
+        },
+      );
+    } catch (error) {
+      if (error instanceof ConnectionError) {
+        const status = mapConnectionErrorStatus(error);
+        // agent.md uses the admin JSON error envelope; mapConnectionErrorStatus may
+        // return 409 for OAuth refresh failures, which jsonError does not accept.
+        if (status === 409) {
+          return context.json({ error: { code: error.code, message: error.message } }, 409);
+        }
+        return jsonError(context, status, error.code, error.message);
+      }
+      throw error;
+    }
   }
 
   private listRuntimeProviders(context: Context): Response {
@@ -818,7 +853,7 @@ export class ConnectServer {
       return jsonError(context, 400, "invalid_input", "name is required.");
     }
 
-    const created = await this.options.runtimeTokens.createToken(name, readTokenActionPolicy(body, true));
+    const created = await this.options.runtimeTokens.createToken(name, readTokenPolicy(body, true));
     return context.json({
       token: created.token,
       record: {
@@ -826,6 +861,7 @@ export class ConnectServer {
         name: created.record.name,
         allowedActions: created.record.allowedActions,
         blockedActions: created.record.blockedActions,
+        allowedProxies: created.record.allowedProxies,
         createdAt: created.record.createdAt,
       },
     });
@@ -833,7 +869,7 @@ export class ConnectServer {
 
   private async updateRuntimeToken(context: Context, id: string): Promise<Response> {
     const body = await readJsonBody(context, policyRequestMaxBytes);
-    const token = await this.options.runtimeTokens.updateTokenPolicy(id, readTokenActionPolicy(body));
+    const token = await this.options.runtimeTokens.updateTokenPolicy(id, readTokenPolicy(body));
     return token
       ? context.json(token)
       : jsonError(context, 404, "runtime_token_not_found", `Runtime token not found: ${id}.`);
@@ -1035,6 +1071,26 @@ interface ConnectionLogContext {
   service: string;
   authType?: string;
   connectionName?: string;
+}
+
+/**
+ * RFC 7232 `If-None-Match` check. Handles `*`, comma-separated lists, and the
+ * weak-comparison prefix (`W/`) so a validator round-tripped through gzip (which
+ * downgrades strong to weak) still matches.
+ */
+function requestMatchesEtag(ifNoneMatch: string | undefined, etag: string): boolean {
+  if (!ifNoneMatch) {
+    return false;
+  }
+  if (ifNoneMatch.trim() === "*") {
+    return true;
+  }
+  const target = stripWeakPrefix(etag);
+  return ifNoneMatch.split(",").some((candidate) => stripWeakPrefix(candidate.trim()) === target);
+}
+
+function stripWeakPrefix(etag: string): string {
+  return etag.startsWith("W/") ? etag.slice(2) : etag;
 }
 
 function readConnectionName(context: Context, body?: Record<string, unknown>): string | undefined {

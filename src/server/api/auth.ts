@@ -6,6 +6,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { isConsoleShellRequest } from "./console-paths.ts";
 import { jsonError } from "./http-utils.ts";
 
+const bearerScheme = "bearer";
 const authCookieName = "oomol_connect_admin_session";
 const authCookieVersion = "v1";
 const authCookieMaxAgeSeconds = 2_592_000;
@@ -65,7 +66,14 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
       return;
     }
 
-    if (canUseAdminAuth(context.req.path, context.req.method) && (await hasValidToken(context, options, "admin"))) {
+    // Admin elevation for action runs is only available when an admin token is
+    // configured. Without that, a missing admin token must not open POST
+    // /v1/actions/* while runtime tokens/JWT are otherwise enforcing auth.
+    if (
+      canUseAdminAuth(context.req.path, context.req.method) &&
+      normalizeToken(options.adminToken) &&
+      (await hasValidToken(context, options, "admin"))
+    ) {
       await installAdminCookieForBearer(context, options);
       await next();
       return;
@@ -130,7 +138,7 @@ export function clearLocalAuthCookie(context: Context): void {
 
 async function installAdminCookieForBearer(context: Context, options: LocalAuthOptions): Promise<void> {
   const token = normalizeToken(options.adminToken);
-  if (token && context.req.header("authorization") === `Bearer ${token}`) {
+  if (token && matchesConfiguredToken(context, token)) {
     await installLocalAuthCookie(context, options);
   }
 }
@@ -141,7 +149,10 @@ async function hasValidToken(context: Context, options: LocalAuthOptions, scope:
     if (scope === "admin") {
       return true;
     }
-    if (!(await (options.hasRuntimeTokens?.() ?? false)) && !options.verifyRuntimeJwt) {
+    const hasRuntimeTokens = options.hasRuntimeTokens
+      ? await options.hasRuntimeTokens()
+      : options.resolveRuntimeToken !== undefined;
+    if (!hasRuntimeTokens && !options.verifyRuntimeJwt) {
       return true;
     }
     return hasValidRuntimeToken(context, options);
@@ -155,8 +166,7 @@ async function hasValidToken(context: Context, options: LocalAuthOptions, scope:
 }
 
 async function hasRequestToken(context: Context, token: string): Promise<boolean> {
-  const authorization = context.req.header("authorization") ?? "";
-  return authorization === `Bearer ${token}` || (await hasValidAuthCookie(context, token));
+  return matchesConfiguredToken(context, token) || (await hasValidAuthCookie(context, token));
 }
 
 async function hasValidAuthCookie(context: Context, token: string): Promise<boolean> {
@@ -201,6 +211,14 @@ function base64Url(value: ArrayBuffer | ArrayBufferView): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+// Deployment secrets (`OOMOL_CONNECT_ADMIN_TOKEN` / `OOMOL_CONNECT_RUNTIME_TOKEN`) are long-lived,
+// so the credential is compared in constant time instead of with `===`, which short-circuits on the
+// first differing character and leaks how much of the token an attacker already guessed. Stored
+// runtime tokens already get the same treatment through `timingSafeEqual` on their hashes.
+function matchesConfiguredToken(context: Context, token: string): boolean {
+  return constantTimeEqual(readBearerCredential(context), token);
+}
+
 function constantTimeEqual(left: string, right: string): boolean {
   if (left.length !== right.length) {
     return false;
@@ -219,7 +237,7 @@ function normalizeToken(token: string | undefined): string | undefined {
 }
 
 function readAuthScope(path: string): AuthScope {
-  return path.startsWith("/mcp") || path.startsWith("/v1/") ? "runtime" : "admin";
+  return path === "/mcp" || path.startsWith("/mcp/") || path === "/v1" || path.startsWith("/v1/") ? "runtime" : "admin";
 }
 
 function canUseAdminAuth(path: string, method: string): boolean {
@@ -246,7 +264,21 @@ async function hasValidRuntimeToken(context: Context, options: LocalAuthOptions)
 }
 
 function readBearerToken(context: Context): string | undefined {
+  return normalizeToken(readBearerCredential(context));
+}
+
+/**
+ * Bearer credential exactly as sent, so configured tokens still require a byte-for-byte match.
+ *
+ * Authentication schemes are case-insensitive (RFC 9110), so `bearer` and `BEARER` are accepted;
+ * only the credentials stay case-sensitive.
+ */
+function readBearerCredential(context: Context): string {
   const authorization = context.req.header("authorization") ?? "";
-  const prefix = "Bearer ";
-  return authorization.startsWith(prefix) ? normalizeToken(authorization.slice(prefix.length)) : undefined;
+  const separator = authorization.indexOf(" ");
+  if (separator < 0 || authorization.slice(0, separator).toLowerCase() !== bearerScheme) {
+    return "";
+  }
+
+  return authorization.slice(separator + 1);
 }

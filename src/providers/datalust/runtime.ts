@@ -1,5 +1,4 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { DatalustActionName } from "./actions.ts";
 
 import {
   optionalBoolean,
@@ -56,7 +55,7 @@ interface WriteEntityOptions {
   entity: Record<string, unknown>;
 }
 
-export const datalustActionHandlers: Record<DatalustActionName, DatalustActionHandler> = {
+export const datalustActionHandlers: Record<string, DatalustActionHandler> = {
   search_events: searchEvents,
   get_event: getEvent,
   execute_query: executeQuery,
@@ -416,11 +415,11 @@ function buildClefEvent(input: Record<string, unknown>, fieldPrefix = ""): Recor
   return {
     ...properties,
     "@t": requiredString(input.timestamp, fieldName("timestamp"), inputError),
-    ...(typeof input.message === "string" ? { "@m": input.message } : {}),
-    ...(typeof input.messageTemplate === "string" ? { "@mt": input.messageTemplate } : {}),
-    ...(typeof input.level === "string" ? { "@l": input.level } : {}),
-    ...(typeof input.exception === "string" ? { "@x": input.exception } : {}),
-    ...(eventType !== undefined ? { "@i": eventType } : {}),
+    "@m": typeof input.message === "string" ? input.message : undefined,
+    "@mt": typeof input.messageTemplate === "string" ? input.messageTemplate : undefined,
+    "@l": typeof input.level === "string" ? input.level : undefined,
+    "@x": typeof input.exception === "string" ? input.exception : undefined,
+    "@i": eventType,
   };
 }
 

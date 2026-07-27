@@ -30,7 +30,7 @@ const defaultRealm = "oc1";
  */
 const oracleInstanceAgentPendingStates = new Set(["ACCEPTED", "IN_PROGRESS"]);
 
-export const oracleRealmDomains = {
+export const oracleRealmDomains: Readonly<Record<string, string>> = {
   oc1: "oraclecloud.com",
   oc2: "oraclegovcloud.com",
   oc3: "oraclegovcloud.com",
@@ -51,9 +51,7 @@ export const oracleRealmDomains = {
   oc42: "oraclecloud42.com",
   oc51: "oraclecloud51.com",
   oc52: "oraclecloud52.com",
-} as const;
-
-type OracleRealm = keyof typeof oracleRealmDomains;
+};
 type OracleService = "core" | "identity" | "monitoring" | "instanceAgent";
 type RequestPhase = "validate" | "execute";
 type OracleMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -84,7 +82,7 @@ export interface OracleCloudContext {
   fingerprint: string;
   privateKey: KeyObject;
   region: string;
-  realm: OracleRealm;
+  realm: string;
   defaultCompartmentId: string;
   fetcher: typeof fetch;
   signal?: AbortSignal;
@@ -266,7 +264,7 @@ export async function validateOracleCloudCredential(
   };
 }
 
-export function buildOracleApiBaseUrl(region: string, realm: OracleRealm, service: OracleService = "core"): string {
+export function buildOracleApiBaseUrl(region: string, realm: string, service: OracleService = "core"): string {
   const domain = oracleRealmDomains[realm];
   if (service === "monitoring") return `https://telemetry.${region}.${domain}/20180401`;
   if (service === "identity") return `https://identity.${region}.oci.${domain}/20160918`;
@@ -411,16 +409,20 @@ async function listCompartments(
       page: optionalString(input.page),
     }),
   });
-  const result = listResult("compartments", response);
+  const compartments = requireArray(response.payload);
   const includeRoot =
     optionalBoolean(input.includeRoot) !== false &&
     optionalString(input.page) === undefined &&
     parentId === context.tenancyId;
   if (includeRoot) {
     const root = await readRootCompartment(context);
-    if (root) (result.compartments as Array<unknown>).push(root);
+    if (root) compartments.push(root);
   }
-  return result;
+  return {
+    compartments,
+    nextPage: response.nextPage,
+    opcRequestId: response.opcRequestId,
+  };
 }
 
 /**
@@ -509,6 +511,10 @@ async function runInstanceAgentCommand(
 
 async function waitForPoll(signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ProviderRequestError(504, "OCI request was aborted"));
+      return;
+    }
     const onAbort = (): void => {
       clearTimeout(timeout);
       reject(new ProviderRequestError(504, "OCI request was aborted"));
@@ -733,12 +739,12 @@ function requireRegion(value: unknown): string {
   return resolved;
 }
 
-function requireRealm(value: unknown): OracleRealm {
+function requireRealm(value: unknown): string {
   const resolved = optionalString(value)?.toLowerCase() || defaultRealm;
   if (!Object.hasOwn(oracleRealmDomains, resolved)) {
     throw credentialError(`realm must be one of ${Object.keys(oracleRealmDomains).join(", ")}`);
   }
-  return resolved as OracleRealm;
+  return resolved;
 }
 
 function credentialError(message: string): ProviderRequestError {

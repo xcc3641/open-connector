@@ -526,6 +526,7 @@ describe("MCP server", () => {
     const policy = new ActionPolicyService().createSnapshot(emptyPolicyRules(), {
       allowedActions: ["example.*"],
       blockedActions: ["example.echo"],
+      allowedProxies: [],
     });
     await withMcpClient(
       async (client) => {
@@ -557,7 +558,12 @@ describe("MCP server", () => {
       },
       {
         getPolicySnapshot: async () => policy,
-        runtimeGrant: { tokenId: "token-1", allowedActions: ["example.*"], blockedActions: ["example.echo"] },
+        runtimeGrant: {
+          tokenId: "token-1",
+          allowedActions: ["example.*"],
+          blockedActions: ["example.echo"],
+          allowedProxies: [],
+        },
       },
     );
   });
@@ -567,7 +573,12 @@ async function withMcpClient(
   run: (client: Client) => Promise<void>,
   policy: {
     getPolicySnapshot?(): Promise<ActionPolicySnapshot>;
-    runtimeGrant?: { tokenId: string; allowedActions: string[]; blockedActions: string[] };
+    runtimeGrant?: {
+      tokenId: string;
+      allowedActions: string[];
+      blockedActions: string[];
+      allowedProxies: string[];
+    };
   } = {},
 ): Promise<void> {
   const catalog = createCatalogStore([exampleProvider, lockedProvider], {

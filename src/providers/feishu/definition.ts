@@ -1,19 +1,24 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
 import { feishuActions } from "./actions.ts";
-import { feishuOAuthScopes } from "./scopes.ts";
+import { feishuProviderScopes } from "./scopes.ts";
 
 const service = "feishu";
+const feishuOAuthScopes = [
+  feishuProviderScopes.offlineAccess,
+  ...new Set(feishuActions.flatMap((action) => action.providerPermissions)),
+];
 
 /**
  * Feishu provider backed by the user_access_token, so an agent reads the
- * authorized user's own Feishu resources without a bot being added to them.
+ * authorized user's own Feishu resources and performs user-authorized
+ * collaboration workflows without a bot being added to each resource.
  * Uses a user-provided Feishu custom app and the OAuth authorization-code flow.
  */
 export const provider: ProviderDefinition = {
   service,
   displayName: "Feishu",
-  categories: ["Productivity", "Storage"],
+  categories: ["Communication", "Productivity", "Storage"],
   authTypes: ["oauth2"],
   auth: [
     {

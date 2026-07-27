@@ -5,19 +5,6 @@ import { defineProviderAction } from "../../core/provider-definition.ts";
 
 const service = "luckin_coffee";
 
-export const luckinMcpToolNames = [
-  "queryShopList",
-  "searchProductForMcp",
-  "switchProduct",
-  "queryProductDetailInfo",
-  "previewOrder",
-  "createOrder",
-  "queryOrderDetailInfo",
-  "cancelOrder",
-] as const;
-
-export type LuckinCoffeeActionName = (typeof luckinMcpToolNames)[number];
-
 const longitudeSchema = s.number("Longitude in decimal degrees.", { minimum: -180, maximum: 180 });
 const latitudeSchema = s.number("Latitude in decimal degrees.", { minimum: -90, maximum: 90 });
 const departmentIdSchema = s.positiveInteger("The Luckin Coffee store ID returned by `queryShopList`.");

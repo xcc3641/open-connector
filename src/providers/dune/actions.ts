@@ -3,7 +3,7 @@ import type { ProviderActionDefinition } from "../../core/provider-definition.ts
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
 
-const service = "dune" as const;
+const service = "dune";
 
 const queryId = s.positiveInteger("Unique numeric ID of a Dune query.");
 const executionId = s.nonEmptyString("Unique ID of a Dune query execution.");

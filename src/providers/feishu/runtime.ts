@@ -14,7 +14,9 @@ const feishuCredentialErrorCodes = new Set([20005, 20006, 99991661, 99991668, 99
 const feishuScopeErrorCodes = new Set([99991679]);
 
 type FeishuActionContext = Pick<OAuthProviderContext, "accessToken" | "fetcher" | "signal">;
-type FeishuActionHandler = (input: Record<string, unknown>, context: FeishuActionContext) => Promise<unknown>;
+interface FeishuActionHandler {
+  (input: Record<string, unknown>, context: FeishuActionContext): Promise<unknown>;
+}
 
 export interface FetchFeishuUserInfoInput {
   accessToken: string;

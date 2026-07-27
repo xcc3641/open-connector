@@ -89,7 +89,12 @@ const governedTailnetSettings: readonly { scope: string; fields: readonly string
 ];
 
 /** Official endpoints that cannot be called with Tailscale OAuth client access tokens. */
-export const tailscaleUnsupportedOAuthClientOperations = [
+interface TailscaleUnsupportedOAuthClientOperation {
+  operationId: string;
+  reason: string;
+}
+
+export const tailscaleUnsupportedOAuthClientOperations: readonly TailscaleUnsupportedOAuthClientOperation[] = [
   {
     operationId: "createDeviceInvites",
     reason: "Device invite creation is scoped to a user-owned access key.",
@@ -122,7 +127,7 @@ export const tailscaleUnsupportedOAuthClientOperations = [
     operationId: "acceptDeviceInvite",
     reason: "Device invite acceptance is scoped to a user and cannot use an OAuth client token.",
   },
-] as const;
+];
 
 export interface TailscaleQueryParameter {
   inputName: string;

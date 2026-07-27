@@ -1,5 +1,4 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { BaiduMapsActionName } from "./actions.ts";
 
 import { createHash } from "node:crypto";
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
@@ -32,7 +31,7 @@ interface BaiduMapsResponsePayload {
 // Errors mapped from Baidu Maps `status` field to ProviderRequestError codes.
 // Reference: https://lbsyun.baidu.com/faq/api (error code table)
 const baiduMapsAuthStatuses = new Set([
-  1, 2, 101, 102, 200, 201, 210, 211, 240, 250, 251, 260, 401, 402, 403, 404, 500, 501, 2000,
+  1, 2, 101, 102, 200, 201, 210, 211, 240, 250, 251, 260, 403, 404, 500, 501, 2000,
 ]);
 // 301/302 = quota exceeded, 401/402 = concurrency over quota (402 = billing
 // enabled). All are "slow down / over quota", so map to 429 (retryable) — the
@@ -43,7 +42,7 @@ const baiduMapsInputStatuses = new Set([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 21,
 type RuntimeInput = Record<string, unknown>;
 type BaiduMapsActionHandler = (input: RuntimeInput, context: BaiduMapsActionContext) => Promise<unknown>;
 
-export const baiduMapsActionHandlers: Record<BaiduMapsActionName, BaiduMapsActionHandler> = {
+export const baiduMapsActionHandlers: Record<string, BaiduMapsActionHandler> = {
   geocode(input, context) {
     return executeGeocode(input, context);
   },

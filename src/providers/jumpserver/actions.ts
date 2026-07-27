@@ -5,16 +5,14 @@ import { defineProviderAction } from "../../core/provider-definition.ts";
 
 const service = "jumpserver";
 
-export const jumpServerMcpToolNames = [
+export const jumpServerMcpToolNames: readonly string[] = [
   "assets_assets_list",
   "assets_nodes_list",
   "accounts_accounts_list",
   "users_users_list",
   "perms_asset_permissions_list",
   "terminal_sessions_list",
-] as const;
-
-export type JumpServerActionName = (typeof jumpServerMcpToolNames)[number];
+];
 
 interface JumpServerActionMetadata {
   description: string;
@@ -22,7 +20,7 @@ interface JumpServerActionMetadata {
   followUpActions?: string[];
 }
 
-const actionMetadata: Record<JumpServerActionName, JumpServerActionMetadata> = {
+const actionMetadata: Record<string, JumpServerActionMetadata> = {
   assets_assets_list: {
     description: "List assets visible to the configured JumpServer token, with optional pagination and search.",
     resource: "assets",

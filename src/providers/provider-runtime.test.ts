@@ -3,6 +3,7 @@ import type { ExecutionContext, ResolvedCredential } from "../core/types.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setPrivateNetworkAccessAllowed } from "../core/request.ts";
 import {
+  createProviderTimeout,
   defineProviderExecutors,
   defineProviderProxy,
   providerFetch,
@@ -23,6 +24,22 @@ describe("toProviderExecutionError", () => {
         message: "Provider request failed.",
       },
     });
+  });
+});
+
+describe("createProviderTimeout", () => {
+  it("inherits an already-aborted parent signal", () => {
+    const parent = new AbortController();
+    parent.abort(new Error("cancelled"));
+
+    const timeout = createProviderTimeout(parent.signal, 60_000);
+    try {
+      expect(timeout.signal.aborted).toBe(true);
+      expect(timeout.signal.reason).toBe(parent.signal.reason);
+      expect(timeout.didTimeout()).toBe(false);
+    } finally {
+      timeout.cleanup();
+    }
   });
 });
 

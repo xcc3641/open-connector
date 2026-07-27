@@ -2,34 +2,50 @@ import type { CredentialValidationResult } from "../../core/types.ts";
 import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.ts";
 import type { SpeechmaticsBatchRegion } from "./constants.ts";
 
-import { optionalRecord, optionalString } from "../../core/cast.ts";
-import { ProviderRequestError, providerUserAgent, readProviderTextBody } from "../provider-runtime.ts";
+import { optionalBoolean, optionalRecord, optionalString } from "../../core/cast.ts";
+import {
+  createProviderTimeout,
+  isAbortLikeError,
+  ProviderRequestError,
+  providerUserAgent,
+  readProviderTextBody,
+} from "../provider-runtime.ts";
 import { speechmaticsBatchHosts } from "./constants.ts";
 
-const speechmaticsManagementApiBaseUrl = "https://mp.api.speechmatics.com/v1";
-const speechmaticsProjectsPath = "/projects";
 const speechmaticsDiscoveryPath = "/v1/discovery/features";
+const speechmaticsRequestTimeoutMs = 60_000;
 
-type SpeechmaticsRequestPhase = "validate" | "execute";
-type SpeechmaticsProcessingMode = "batch" | "realtime";
-type SpeechmaticsActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
+export interface SpeechmaticsActionContext extends ApiKeyProviderContext {
+  defaultRegion?: string;
+}
+
+interface SpeechmaticsCredentialInput {
+  apiKey: string;
+  defaultRegion?: string;
+}
 
 interface SpeechmaticsRequestOptions {
-  url: URL;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-  phase: SpeechmaticsRequestPhase;
-  authenticated: boolean;
+  method?: "GET" | "POST";
+  body?: BodyInit;
+  authenticated?: boolean;
+  phase?: "validate" | "execute";
+  accept?: string;
 }
 
 interface SpeechmaticsDeployment {
-  mode: SpeechmaticsProcessingMode;
-  region: SpeechmaticsBatchRegion;
+  mode: "batch" | "realtime";
+  region: SpeechmaticsBatchRegion | "global";
   location: string;
   customerType: "all" | "enterprise";
   endpoint: string;
   protocol: "https" | "wss";
   apiVersion: string;
 }
+
+type SpeechmaticsActionHandler = (
+  input: Record<string, unknown>,
+  context: SpeechmaticsActionContext,
+) => Promise<unknown>;
 
 const speechmaticsDeployments: readonly SpeechmaticsDeployment[] = [
   {
@@ -79,6 +95,15 @@ const speechmaticsDeployments: readonly SpeechmaticsDeployment[] = [
   },
   {
     mode: "realtime",
+    region: "global",
+    location: "Nearest available region",
+    customerType: "all",
+    endpoint: "global.rt.speechmatics.com",
+    protocol: "wss",
+    apiVersion: "v2",
+  },
+  {
+    mode: "realtime",
     region: "eu1",
     location: "Europe",
     customerType: "all",
@@ -98,26 +123,39 @@ const speechmaticsDeployments: readonly SpeechmaticsDeployment[] = [
 ];
 
 export const speechmaticsActionHandlers: Record<string, SpeechmaticsActionHandler> = {
-  async list_projects(_input, context): Promise<unknown> {
-    const payload = await speechmaticsRequestJson({
-      url: new URL(`${speechmaticsManagementApiBaseUrl}${speechmaticsProjectsPath}`),
-      context,
-      phase: "execute",
-      authenticated: true,
+  async submit_transcription(input, context): Promise<unknown> {
+    const region = readBatchRegion(input.region, context.defaultRegion);
+    const formData = new FormData();
+    formData.set("config", JSON.stringify(buildTranscriptionConfig(input)));
+    const payload = await speechmaticsRequest(batchUrl(region, "/v2/jobs"), context, {
+      method: "POST",
+      body: formData,
     });
-
-    return { projects: readProjects(payload) };
+    return requireSpeechmaticsObject(payload, "job submission response");
+  },
+  async get_transcription_job(input, context): Promise<unknown> {
+    const region = readBatchRegion(input.region, context.defaultRegion);
+    const jobId = readRequiredString(input.jobId, "jobId");
+    const payload = await speechmaticsRequest(batchUrl(region, `/v2/jobs/${encodeURIComponent(jobId)}`), context);
+    const response = requireSpeechmaticsObject(payload, "job response");
+    requireSpeechmaticsObject(response.job, "job");
+    return response;
+  },
+  async get_transcript(input, context): Promise<unknown> {
+    const region = readBatchRegion(input.region, context.defaultRegion);
+    const jobId = readRequiredString(input.jobId, "jobId");
+    const format = readTranscriptFormat(input.format);
+    const url = batchUrl(region, `/v2/jobs/${encodeURIComponent(jobId)}/transcript`);
+    url.searchParams.set("format", format);
+    const transcript = await speechmaticsRequest(url, context, {
+      accept: format === "json-v2" ? "application/json" : "text/plain",
+    });
+    return { format, transcript };
   },
   async get_service_capabilities(input, context): Promise<unknown> {
-    const region = readBatchRegion(input.region);
-    const endpoint = new URL(`https://${speechmaticsBatchHosts[region]}${speechmaticsDiscoveryPath}`);
-    const payload = await speechmaticsRequestJson({
-      url: endpoint,
-      context,
-      phase: "execute",
-      authenticated: false,
-    });
-
+    const region = readBatchRegion(input.region, context.defaultRegion);
+    const endpoint = batchUrl(region, speechmaticsDiscoveryPath);
+    const payload = await speechmaticsRequest(endpoint, context, { authenticated: false });
     return {
       region,
       endpoint: endpoint.toString(),
@@ -129,67 +167,105 @@ export const speechmaticsActionHandlers: Record<string, SpeechmaticsActionHandle
     return {
       deployments: mode
         ? speechmaticsDeployments.filter((deployment) => deployment.mode === mode)
-        : [...speechmaticsDeployments],
+        : speechmaticsDeployments,
     };
   },
 };
 
 export async function validateSpeechmaticsCredential(
-  managementToken: string,
+  credential: SpeechmaticsCredentialInput,
   fetcher: ProviderFetch,
   signal?: AbortSignal,
 ): Promise<CredentialValidationResult> {
-  await speechmaticsRequestJson({
-    url: new URL(`${speechmaticsManagementApiBaseUrl}${speechmaticsProjectsPath}`),
-    context: { apiKey: managementToken, fetcher, signal },
-    phase: "validate",
-    authenticated: true,
-  });
-
+  const region = readBatchRegion(undefined, credential.defaultRegion);
+  await speechmaticsRequest(
+    batchUrl(region, "/v2/jobs?limit=1"),
+    { apiKey: credential.apiKey, defaultRegion: region, fetcher, signal },
+    { phase: "validate" },
+  );
   return {
     profile: {
-      displayName: "Speechmatics Management Token",
+      accountId: `speechmatics-api-key:${region}`,
+      displayName: `Speechmatics API Key (${region})`,
     },
-    grantedScopes: ["View projects"],
+    grantedScopes: [],
     metadata: {
-      apiBaseUrl: speechmaticsManagementApiBaseUrl,
-      validationEndpoint: speechmaticsProjectsPath,
+      defaultRegion: region,
+      apiBaseUrl: `https://${speechmaticsBatchHosts[region]}/v2`,
+      validationEndpoint: "/jobs?limit=1",
     },
   };
 }
 
-async function speechmaticsRequestJson(input: SpeechmaticsRequestOptions): Promise<unknown> {
-  let response: Response;
+function buildTranscriptionConfig(input: Record<string, unknown>) {
+  const additionalVocabulary = Array.isArray(input.additionalVocabulary)
+    ? input.additionalVocabulary.map((item) => {
+        const vocabulary = requireSpeechmaticsObject(item, "additional vocabulary item");
+        return {
+          content: readRequiredString(vocabulary.content, "additionalVocabulary.content"),
+          sounds_like: Array.isArray(vocabulary.soundsLike) ? vocabulary.soundsLike : undefined,
+        };
+      })
+    : undefined;
+  return {
+    type: "transcription",
+    fetch_data: {
+      url: readRequiredString(input.mediaUrl, "mediaUrl"),
+      auth_headers: Array.isArray(input.mediaAuthHeaders) ? input.mediaAuthHeaders : undefined,
+    },
+    transcription_config: {
+      language: readRequiredString(input.language, "language"),
+      model: optionalString(input.model),
+      domain: optionalString(input.domain),
+      output_locale: optionalString(input.outputLocale),
+      diarization: optionalString(input.diarization),
+      enable_entities: optionalBoolean(input.enableEntities),
+      additional_vocab: additionalVocabulary,
+    },
+    tracking: optionalRecord(input.tracking),
+  };
+}
+
+async function speechmaticsRequest(
+  url: URL,
+  context: SpeechmaticsActionContext,
+  options: SpeechmaticsRequestOptions = {},
+): Promise<unknown> {
+  const timeout = createProviderTimeout(context.signal, speechmaticsRequestTimeoutMs);
+  const headers = new Headers({
+    accept: options.accept ?? "application/json",
+    "user-agent": providerUserAgent,
+  });
+  if (options.authenticated !== false) {
+    headers.set("authorization", `Bearer ${context.apiKey}`);
+  }
+
   try {
-    response = await input.context.fetcher(input.url, {
-      method: "GET",
-      headers: speechmaticsHeaders(input.authenticated ? input.context.apiKey : undefined),
-      signal: input.context.signal,
+    const response = await context.fetcher(url, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body,
+      signal: timeout.signal,
     });
+    const payload = await readSpeechmaticsPayload(response);
+    if (!response.ok) {
+      throw createSpeechmaticsError(response, payload, options.phase ?? "execute");
+    }
+    return payload;
   } catch (error) {
+    if (error instanceof ProviderRequestError) {
+      throw error;
+    }
+    if (timeout.didTimeout() || isAbortLikeError(error)) {
+      throw new ProviderRequestError(504, "Speechmatics request timed out");
+    }
     throw new ProviderRequestError(
       502,
       error instanceof Error ? `Speechmatics request failed: ${error.message}` : "Speechmatics request failed",
     );
+  } finally {
+    timeout.cleanup();
   }
-
-  const payload = await readSpeechmaticsPayload(response);
-  if (!response.ok) {
-    throw createSpeechmaticsError(response, payload, input.phase);
-  }
-
-  return payload;
-}
-
-function speechmaticsHeaders(token?: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    accept: "application/json",
-    "user-agent": providerUserAgent,
-  };
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-  }
-  return headers;
 }
 
 async function readSpeechmaticsPayload(response: Response): Promise<unknown> {
@@ -197,25 +273,25 @@ async function readSpeechmaticsPayload(response: Response): Promise<unknown> {
   if (!text.trim()) {
     return null;
   }
-
-  try {
-    const payload: unknown = JSON.parse(text);
-    return payload;
-  } catch {
-    return text;
+  if ((response.headers.get("content-type") ?? "").includes("json")) {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new ProviderRequestError(502, "Speechmatics returned invalid JSON");
+    }
   }
+  return text;
 }
 
 function createSpeechmaticsError(
   response: Response,
   payload: unknown,
-  phase: SpeechmaticsRequestPhase,
+  phase: "validate" | "execute",
 ): ProviderRequestError {
   const message =
     extractSpeechmaticsErrorMessage(payload) ??
     response.statusText ??
     `Speechmatics request failed with status ${response.status}`;
-
   if (phase === "validate" && (response.status === 401 || response.status === 403)) {
     return new ProviderRequestError(400, message, payload);
   }
@@ -232,27 +308,10 @@ function extractSpeechmaticsErrorMessage(payload: unknown): string | undefined {
   if (typeof payload === "string" && payload.trim()) {
     return payload.trim();
   }
-
   const object = optionalRecord(payload);
-  if (!object) {
-    return undefined;
-  }
-
-  return optionalString(object.detail) ?? optionalString(object.error) ?? optionalString(object.message);
-}
-
-function readProjects(payload: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(payload)) {
-    throw new ProviderRequestError(502, "Speechmatics projects response must be an array");
-  }
-
-  return payload.map((project) => {
-    const object = requireSpeechmaticsObject(project, "project");
-    if (!Number.isInteger(object.project_id)) {
-      throw new ProviderRequestError(502, "Speechmatics project_id must be an integer");
-    }
-    return object;
-  });
+  return object
+    ? (optionalString(object.detail) ?? optionalString(object.error) ?? optionalString(object.message))
+    : undefined;
 }
 
 function requireSpeechmaticsObject(value: unknown, label: string): Record<string, unknown> {
@@ -263,7 +322,7 @@ function requireSpeechmaticsObject(value: unknown, label: string): Record<string
   return object;
 }
 
-function readProcessingMode(value: unknown): SpeechmaticsProcessingMode | undefined {
+function readProcessingMode(value: unknown): "batch" | "realtime" | undefined {
   const mode = optionalString(value);
   if (!mode) {
     return undefined;
@@ -274,8 +333,12 @@ function readProcessingMode(value: unknown): SpeechmaticsProcessingMode | undefi
   }
 }
 
-function readBatchRegion(value: unknown): SpeechmaticsBatchRegion {
-  const region = optionalString(value) ?? "eu1";
+function batchUrl(region: SpeechmaticsBatchRegion, path: string) {
+  return new URL(`https://${speechmaticsBatchHosts[region]}${path}`);
+}
+
+function readBatchRegion(value: unknown, fallback?: string): SpeechmaticsBatchRegion {
+  const region = optionalString(value) ?? fallback ?? "eu1";
   if (isSpeechmaticsBatchRegion(region)) {
     return region;
   }
@@ -284,4 +347,20 @@ function readBatchRegion(value: unknown): SpeechmaticsBatchRegion {
 
 function isSpeechmaticsBatchRegion(value: string): value is SpeechmaticsBatchRegion {
   return Object.hasOwn(speechmaticsBatchHosts, value);
+}
+
+function readTranscriptFormat(value: unknown): "json-v2" | "txt" | "srt" {
+  const format = optionalString(value) ?? "json-v2";
+  if (format === "json-v2" || format === "txt" || format === "srt") {
+    return format;
+  }
+  throw new ProviderRequestError(400, `Unsupported Speechmatics transcript format: ${format}`);
+}
+
+function readRequiredString(value: unknown, fieldName: string) {
+  const text = optionalString(value);
+  if (!text) {
+    throw new ProviderRequestError(400, `${fieldName} is required`);
+  }
+  return text;
 }

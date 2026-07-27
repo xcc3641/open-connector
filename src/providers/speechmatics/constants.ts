@@ -1,6 +1,6 @@
-export const speechmaticsBatchRegions = ["eu1", "eu2", "us1", "us2", "au1"] as const;
+export type SpeechmaticsBatchRegion = "eu1" | "eu2" | "us1" | "us2" | "au1";
 
-export type SpeechmaticsBatchRegion = (typeof speechmaticsBatchRegions)[number];
+export const speechmaticsBatchRegions: readonly SpeechmaticsBatchRegion[] = ["eu1", "eu2", "us1", "us2", "au1"];
 
 export const speechmaticsBatchHosts: Readonly<Record<SpeechmaticsBatchRegion, string>> = {
   eu1: "eu1.asr.api.speechmatics.com",
