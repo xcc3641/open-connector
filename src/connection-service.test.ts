@@ -149,26 +149,47 @@ describe("ConnectionService", () => {
     await expect(service.listConnections()).resolves.toEqual([]);
   });
 
-  it("exposes no_auth providers as virtual connections", async () => {
+  it("does not expose no_auth providers until they are explicitly activated", async () => {
     const service = createService([hackernewsProvider]);
 
+    await expect(service.getCredential("hackernews")).resolves.toBeUndefined();
+    await expect(service.listConnections()).resolves.toEqual([]);
+
+    await expect(service.connectWithoutAuth("hackernews")).resolves.toMatchObject({
+      service: "hackernews",
+      connectionName: "default",
+      authType: "no_auth",
+      configured: true,
+      virtual: false,
+      default: true,
+      profile: {
+        accountId: "hackernews:public",
+        displayName: "Hacker News Public",
+        grantedScopes: [],
+      },
+    });
     await expect(service.getCredential("hackernews")).resolves.toEqual({ authType: "no_auth" });
-    await expect(service.listConnections()).resolves.toEqual([
+    await expect(service.listConnections()).resolves.toMatchObject([
       {
-        id: "hackernews:default",
         service: "hackernews",
-        connectionName: "default",
         authType: "no_auth",
         configured: true,
-        virtual: true,
-        default: true,
-        profile: {
-          accountId: "hackernews:public",
-          displayName: "Hacker News Public",
-          grantedScopes: [],
-        },
+        virtual: false,
       },
     ]);
+  });
+
+  it("keeps no_auth providers disconnected after disconnect", async () => {
+    const service = createService([hackernewsProvider]);
+
+    await service.connectWithoutAuth("hackernews");
+    await expect(service.disconnect("hackernews")).resolves.toEqual({
+      service: "hackernews",
+      connectionName: "default",
+      configured: false,
+    });
+    await expect(service.listConnections()).resolves.toEqual([]);
+    await expect(service.getCredential("hackernews")).resolves.toBeUndefined();
   });
 
   it("stores API key credentials as resolved credentials", async () => {

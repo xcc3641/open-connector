@@ -5,7 +5,7 @@
     "catalogOnly": "Только каталог",
     "clear": "Очистить",
     "close": "Закрыть",
-    "connected": "Подключено",
+    "connected": "Активен",
     "copied": "{{label}} скопировано",
     "copy": "Копировать {{label}}",
     "credential": "Учетные данные",
@@ -91,7 +91,7 @@
   },
   "overview": {
     "runtimeReady": "Runtime готов",
-    "connectedProviders": "{{count}} подключенных провайдеров",
+    "connectedProviders": "{{count}} активных провайдеров",
     "capabilityStatus": "Статус возможностей",
     "metrics": {
       "providers": "Провайдеры",
@@ -125,7 +125,7 @@
     "statusFilterLabel": "Статус провайдера",
     "filters": {
       "all": "Все",
-      "connected": "Подключено",
+      "connected": "Активные",
       "notConnected": "Не подключено",
       "oauthNeedsConfig": "OAuth требует настройки"
     },
@@ -144,7 +144,7 @@
     "selectProviderTitle": "Выберите провайдера",
     "selectProviderDescription": "Выберите провайдера, чтобы проверить настройки подключения.",
     "connectedBy": "Подключено через {{authType}}",
-    "configuredBadge": "Настроено",
+    "configuredBadge": "Активен",
     "noSetupBadge": "Без настройки",
     "unconfiguredBadge": "Не подключено",
     "oauthClientRequiredBadge": "Требуется OAuth client",
@@ -155,7 +155,7 @@
       "actions": "Действия",
       "auth": "Auth",
       "oauthConfig": "Настройка OAuth",
-      "configured": "Настроено",
+      "configured": "Активен",
       "required": "Обязательно",
       "notUsed": "Не используется"
     },
@@ -179,7 +179,8 @@
       "saved": "Сохранено подключений: {{count}}. Выберите подключение для управления или добавьте новое.",
       "oauthClientRequired": "{{name}} требует локальный OAuth client перед запуском OAuth.",
       "notConnected": "Настройте локальные учетные данные перед запуском действий {{name}}, которым они нужны.",
-      "unavailable": "Подключения нельзя настроить в текущей среде выполнения."
+      "unavailable": "Подключения нельзя настроить в текущей среде выполнения.",
+      "activateNoAuth": "Активируйте {{name}}, чтобы no-auth действия стали доступны в MCP и локальном выполнении."
     },
     "noConnectionMethodTitle": "Нет способа подключения",
     "noConnectionMethodDescription": "Этому провайдеру не нужны локальные учетные данные.",
@@ -209,7 +210,14 @@
       "failed": "Не удалось подключиться.",
       "disconnecting": "Отключение...",
       "disconnected": "Отключено.",
-      "disconnectFailed": "Не удалось отключиться."
+      "disconnectFailed": "Не удалось отключиться.",
+      "noAuthInactive": "{{name}} не требует учётных данных, но должен быть активирован перед обнаружением и выполнением.",
+      "noAuthActive": "{{name}} активирован. Локальные учётные данные не хранятся.",
+      "activating": "Активация...",
+      "activated": "Активировано.",
+      "deactivating": "Деактивация...",
+      "deactivated": "Деактивировано.",
+      "deactivateFailed": "Не удалось деактивировать."
     },
     "buttons": {
       "configureOAuthClient": "Настроить OAuth Client",
@@ -227,7 +235,10 @@
       "disconnect": "Отключить",
       "saveOAuthClient": "Сохранить OAuth Client",
       "updateOAuthClient": "Обновить OAuth Client",
-      "resetOAuthClient": "Сбросить OAuth Client"
+      "resetOAuthClient": "Сбросить OAuth Client",
+      "activateProvider": "Активировать {{name}}",
+      "activated": "Активировано",
+      "deactivate": "Деактивировать"
     },
     "oauthClientSettings": {
       "configuredTitle": "OAuth client настроен",

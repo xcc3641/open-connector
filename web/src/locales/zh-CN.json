@@ -5,7 +5,7 @@
     "catalogOnly": "仅目录",
     "clear": "清除",
     "close": "关闭",
-    "connected": "已连接",
+    "connected": "已激活",
     "copied": "已复制 {{label}}",
     "copy": "复制 {{label}}",
     "credential": "凭证",
@@ -91,7 +91,7 @@
   },
   "overview": {
     "runtimeReady": "运行时就绪",
-    "connectedProviders": "{{count}} 个已连接提供商",
+    "connectedProviders": "{{count}} 个已激活提供商",
     "capabilityStatus": "能力状态",
     "metrics": {
       "providers": "提供商",
@@ -125,7 +125,7 @@
     "statusFilterLabel": "提供商状态",
     "filters": {
       "all": "全部",
-      "connected": "已连接",
+      "connected": "已激活",
       "notConnected": "未连接",
       "oauthNeedsConfig": "OAuth 待配置"
     },
@@ -144,7 +144,7 @@
     "selectProviderTitle": "选择提供商",
     "selectProviderDescription": "选择一个提供商来查看连接设置。",
     "connectedBy": "通过 {{authType}} 连接",
-    "configuredBadge": "已配置",
+    "configuredBadge": "已激活",
     "noSetupBadge": "无需设置",
     "unconfiguredBadge": "未连接",
     "oauthClientRequiredBadge": "需要 OAuth client",
@@ -155,7 +155,7 @@
       "actions": "操作",
       "auth": "鉴权",
       "oauthConfig": "OAuth 配置",
-      "configured": "已配置",
+      "configured": "已激活",
       "required": "必填",
       "notUsed": "未使用"
     },
@@ -179,7 +179,8 @@
       "saved": "{{count}} 个已保存的连接。选择一个进行管理，或添加新连接。",
       "oauthClientRequired": "{{name}} 需要先配置本地 OAuth client 才能开始 OAuth。",
       "notConnected": "运行需要凭证的 {{name}} 操作前，请先配置本地凭证。",
-      "unavailable": "当前运行时无法配置连接。"
+      "unavailable": "当前运行时无法配置连接。",
+      "activateNoAuth": "激活 {{name}} 后，其无需鉴权的操作才会出现在 MCP 发现中并可本地执行。"
     },
     "noConnectionMethodTitle": "没有连接方式",
     "noConnectionMethodDescription": "这个提供商不需要本地凭证。",
@@ -209,7 +210,14 @@
       "failed": "连接失败。",
       "disconnecting": "正在断开连接...",
       "disconnected": "已断开连接。",
-      "disconnectFailed": "断开连接失败。"
+      "disconnectFailed": "断开连接失败。",
+      "noAuthInactive": "{{name}} 不需要凭证，但必须先激活才会出现在发现列表并允许执行。",
+      "noAuthActive": "{{name}} 已激活。不会保存本地凭证。",
+      "activating": "正在激活...",
+      "activated": "已激活。",
+      "deactivating": "正在取消激活...",
+      "deactivated": "已取消激活。",
+      "deactivateFailed": "取消激活失败。"
     },
     "buttons": {
       "configureOAuthClient": "配置 OAuth Client",
@@ -227,7 +235,10 @@
       "disconnect": "断开连接",
       "saveOAuthClient": "保存 OAuth Client",
       "updateOAuthClient": "更新 OAuth Client",
-      "resetOAuthClient": "重置 OAuth Client"
+      "resetOAuthClient": "重置 OAuth Client",
+      "activateProvider": "激活 {{name}}",
+      "activated": "已激活",
+      "deactivate": "取消激活"
     },
     "oauthClientSettings": {
       "configuredTitle": "OAuth client 已配置",

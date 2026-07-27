@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ProviderRequestError } from "../provider-runtime.ts";
-import { astroActionHandlers, callAstroMcpTool } from "./executors.ts";
+import { astroActionHandlers, callAstroMcpTool, shouldSkipAstroMcpDnsValidation } from "./executors.ts";
 
 describe("Astro provider MCP bridge", () => {
+  it("skips DNS validation only for the fixed Docker host endpoint", () => {
+    expect(shouldSkipAstroMcpDnsValidation("http://host.docker.internal:8089/mcp")).toBe(true);
+    expect(shouldSkipAstroMcpDnsValidation("http://host.docker.internal:8090/mcp")).toBe(false);
+    expect(shouldSkipAstroMcpDnsValidation("http://example.internal:8089/mcp")).toBe(false);
+  });
+
   it("calls an Astro MCP tool and parses JSON text content", async () => {
     const requests: unknown[] = [];
     const output = await callAstroMcpTool(

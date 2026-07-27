@@ -1,11 +1,14 @@
 import type { ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 import type { AstroActionName } from "./definition.ts";
 
+import { isPrivateNetworkAccessAllowed } from "../../core/request.ts";
 import { defineProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 import { astroActionNames } from "./definition.ts";
 
 const service = "astro";
 const defaultAstroMcpUrl = "http://127.0.0.1:8089/mcp";
+const dockerHostAstroMcpUrl = "http://host.docker.internal:8089/mcp";
+const astroMcpUrl = resolveAstroMcpUrl();
 
 export interface AstroActionContext {
   url: string;
@@ -25,9 +28,14 @@ export const astroActionHandlers: Record<AstroActionName, AstroActionHandler> = 
 export const executors: ProviderExecutors = defineProviderExecutors<AstroActionContext>({
   service,
   handlers: astroActionHandlers,
+  // Astro MCP runs on the host; Docker reaches it via host.docker.internal.
+  allowPrivateNetwork: isPrivateNetworkAccessAllowed,
+  // OrbStack resolves this exact fixed host-service URL to a reserved address.
+  // Custom ASTRO_MCP_URL values retain normal DNS validation.
+  skipDnsValidation: shouldSkipAstroMcpDnsValidation(astroMcpUrl),
   createContext(context: ExecutionContext, fetcher: typeof fetch): AstroActionContext {
     return {
-      url: resolveAstroMcpUrl(),
+      url: astroMcpUrl,
       fetcher,
       signal: context.signal,
     };
@@ -116,7 +124,13 @@ export async function callAstroMcpTool(
 
 function resolveAstroMcpUrl(): string {
   const url = process.env.ASTRO_MCP_URL?.trim();
-  return url || defaultAstroMcpUrl;
+  const resolved = url || defaultAstroMcpUrl;
+  return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
+}
+
+/** Only the fixed Docker-to-host Astro MCP endpoint may bypass redundant DNS validation. */
+export function shouldSkipAstroMcpDnsValidation(url: string): boolean {
+  return url === dockerHostAstroMcpUrl;
 }
 
 function parseJsonRpcResponse(text: string): McpJsonRpcResponse {

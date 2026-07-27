@@ -283,7 +283,7 @@ export function createOverviewSummary(data: AppData): OverviewSummary {
     providerCount: data.providers.length,
     actionCount: actions.length,
     locallyExecutableActionCount: actions.filter((action) => action.execution.locallyExecutable).length,
-    connectedCount: data.connections.filter(isUsableCredentialConnection).length,
+    connectedCount: data.connections.filter(isUsableConnection).length,
     activeTokenCount: data.runtimeTokens.length,
     failedRunCount: failedRuns.length,
     failedRuns: failedRuns.slice(0, 5),
@@ -295,11 +295,11 @@ export function resolveProviderConnectionStatus(
   connections: ConnectionRecord[],
   oauthConfigs: OAuthConfig[],
 ): ProviderConnectionStatus {
-  const noSetupRequired = isNoAuthOnlyProvider(provider);
-  const serviceConnections = noSetupRequired ? [] : usableConnectionsForService(connections, provider.service);
-  const connection = pickUsableCredentialConnection(serviceConnections);
+  const serviceConnections = usableConnectionsForService(connections, provider.service);
+  const connection = pickUsableConnection(serviceConnections);
   return {
-    noSetupRequired,
+    // no_auth apps still need an explicit local connection before MCP discovery or execution.
+    noSetupRequired: false,
     connected: connection != null,
     oauthClientRequired:
       connection == null && providerRequiresOAuth(provider) && !oauthClientConfigured(provider.service, oauthConfigs),
@@ -309,7 +309,7 @@ export function resolveProviderConnectionStatus(
 }
 
 export function usableConnectionsForService(connections: ConnectionRecord[], service: string): ConnectionRecord[] {
-  return connections.filter((connection) => connection.service === service && isUsableCredentialConnection(connection));
+  return connections.filter((connection) => connection.service === service && isUsableConnection(connection));
 }
 
 export function isNoAuthOnlyProvider(provider: ProviderDefinition): boolean {
@@ -317,18 +317,13 @@ export function isNoAuthOnlyProvider(provider: ProviderDefinition): boolean {
   return authTypes.length === 0 || authTypes.every((authType) => authType === "no_auth");
 }
 
-function pickUsableCredentialConnection(connections: ConnectionRecord[]): ConnectionRecord | undefined {
-  const usableConnections = connections.filter(isUsableCredentialConnection);
-  return usableConnections.find((connection) => connection.default) ?? usableConnections[0];
+function pickUsableConnection(connections: ConnectionRecord[]): ConnectionRecord | undefined {
+  return connections.find((connection) => connection.default) ?? connections[0];
 }
 
-function isUsableCredentialConnection(connection: ConnectionRecord | undefined): connection is ConnectionRecord {
-  return (
-    connection != null &&
-    connection.authType !== "no_auth" &&
-    connection.virtual !== true &&
-    connection.configured !== false
-  );
+/** Stored connections that make a provider available locally, including activated no-auth apps. */
+function isUsableConnection(connection: ConnectionRecord | undefined): connection is ConnectionRecord {
+  return connection != null && connection.virtual !== true && connection.configured !== false;
 }
 
 function providerRequiresOAuth(provider: ProviderDefinition): boolean {
@@ -375,8 +370,8 @@ export function sortProviders(
   connectionsByService: Map<string, ConnectionRecord>,
 ): ProviderDefinition[] {
   return [...providers].sort((left, right) => {
-    const leftConnected = isUsableCredentialConnection(connectionsByService.get(left.service));
-    const rightConnected = isUsableCredentialConnection(connectionsByService.get(right.service));
+    const leftConnected = isUsableConnection(connectionsByService.get(left.service));
+    const rightConnected = isUsableConnection(connectionsByService.get(right.service));
     if (leftConnected !== rightConnected) {
       return leftConnected ? -1 : 1;
     }

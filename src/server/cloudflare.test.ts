@@ -153,7 +153,7 @@ describe("cloudflare worker", () => {
 
 function createEnv(): CloudflareEnv {
   return {
-    DB: new UnusedD1Database(),
+    DB: new MemoryD1Database(),
     TRANSIT_FILES: new UnusedR2Bucket(),
     ASSETS: memoryAssets({
       "/catalog/apps.json": [provider],
@@ -184,6 +184,105 @@ function memoryAssets(files: Record<string, unknown>): AssetsBinding {
 class UnusedD1Database implements D1DatabaseBinding {
   prepare(query: string): D1PreparedStatementBinding {
     throw new Error(`Unexpected D1 query: ${query}`);
+  }
+}
+
+/** Minimal D1 stub for connection-store writes used by no_auth activation. */
+class MemoryD1Database implements D1DatabaseBinding {
+  private readonly connections = new Map<
+    string,
+    { id: string; service: string; connection_name: string; value: string; updated_at: string }
+  >();
+
+  prepare(query: string): D1PreparedStatementBinding {
+    const normalized = query.replace(/\s+/g, " ").trim().toLowerCase();
+    return new MemoryD1Statement(normalized, this.connections);
+  }
+}
+
+class MemoryD1Statement implements D1PreparedStatementBinding {
+  private values: unknown[] = [];
+  private readonly query: string;
+  private readonly connections: Map<
+    string,
+    { id: string; service: string; connection_name: string; value: string; updated_at: string }
+  >;
+
+  constructor(
+    query: string,
+    connections: Map<
+      string,
+      { id: string; service: string; connection_name: string; value: string; updated_at: string }
+    >,
+  ) {
+    this.query = query;
+    this.connections = connections;
+  }
+
+  bind(...values: unknown[]): D1PreparedStatementBinding {
+    this.values = values;
+    return this;
+  }
+
+  async first<T>(): Promise<T | null> {
+    if (this.query.startsWith("select id, value from connections")) {
+      const [service, connectionName] = this.values as [string, string];
+      const row = this.connections.get(`${service}:${connectionName}`);
+      return row ? ({ id: row.id, value: row.value } as T) : null;
+    }
+
+    if (this.query.includes("insert into connections")) {
+      const [id, service, connectionName, value, updatedAt] = this.values as [string, string, string, string, string];
+      const key = `${service}:${connectionName}`;
+      const existing = this.connections.get(key);
+      const row = {
+        id: existing?.id ?? id,
+        service,
+        connection_name: connectionName,
+        value,
+        updated_at: updatedAt,
+      };
+      this.connections.set(key, row);
+      return { id: row.id } as T;
+    }
+
+    if (this.query.startsWith("update connections")) {
+      const [value, updatedAt, service, connectionName, id] = this.values as [string, string, string, string, string];
+      const key = `${service}:${connectionName}`;
+      const existing = this.connections.get(key);
+      if (!existing || existing.id !== id) {
+        return null;
+      }
+      const row = { ...existing, value, updated_at: updatedAt };
+      this.connections.set(key, row);
+      return { id: row.id } as T;
+    }
+
+    throw new Error(`Unexpected D1 query: ${this.query}`);
+  }
+
+  async all<T>(): Promise<{ results: T[] }> {
+    if (this.query.startsWith("select id, service, connection_name, value from connections")) {
+      return {
+        results: [...this.connections.values()].map((row) => ({
+          id: row.id,
+          service: row.service,
+          connection_name: row.connection_name,
+          value: row.value,
+        })) as T[],
+      };
+    }
+    throw new Error(`Unexpected D1 query: ${this.query}`);
+  }
+
+  async run(): Promise<{ success: boolean; meta: { changes?: number } }> {
+    if (this.query.startsWith("delete from connections")) {
+      const [service, connectionName] = this.values as [string, string];
+      const key = `${service}:${connectionName}`;
+      const existed = this.connections.delete(key);
+      return { success: true, meta: { changes: existed ? 1 : 0 } };
+    }
+    throw new Error(`Unexpected D1 query: ${this.query}`);
   }
 }
 

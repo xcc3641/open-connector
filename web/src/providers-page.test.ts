@@ -53,8 +53,8 @@ describe("shouldShowOAuthClientForm", () => {
 });
 
 describe("shouldShowConnectionActions", () => {
-  it("hides connection actions for no-auth providers", () => {
-    expect(shouldShowConnectionActions({ type: "no_auth" })).toBe(false);
+  it("shows connection actions for no-auth providers so they can be activated", () => {
+    expect(shouldShowConnectionActions({ type: "no_auth" })).toBe(true);
   });
 
   it("shows connection actions when credentials or OAuth are required", () => {
@@ -84,6 +84,11 @@ describe("connectionSubmitLabel", () => {
 
   it("keeps credential submit labels generic", () => {
     expect(connectionSubmitLabel({ type: "api_key" }, false, "Stripe")).toBe("Save Connection");
+  });
+
+  it("labels no-auth actions as activate / activated", () => {
+    expect(connectionSubmitLabel({ type: "no_auth" }, false, "Astro ASO")).toBe("Activate Astro ASO");
+    expect(connectionSubmitLabel({ type: "no_auth" }, true, "Astro ASO")).toBe("Activated");
   });
 });
 
@@ -172,19 +177,65 @@ describe("ProvidersPage route shell", () => {
     expect(markup).not.toContain("provider-detail-description");
   });
 
-  it("labels no-auth providers as no setup instead of configured", () => {
+  it("labels unactivated no-auth providers as not connected", () => {
     const markup = renderProvidersPage(
       {
         ...providerData,
         providers: [noAuthProvider],
-        connections: [{ service: "clock", authType: "no_auth", virtual: true, metadata: {} }],
+        connections: [],
         oauthConfigs: [],
       },
       "/providers",
     );
 
-    expect(markup).toContain("No setup");
-    expect(markup).not.toContain("Configured");
+    expect(markup).toContain("Not connected");
+    expect(markup).toContain("Connect");
+    expect(markup).not.toContain("No setup");
+    // filter chip can still say Activated with count 0; card itself must not be badged
+    expect(markup).not.toContain('class="provider-status-badges"');
+  });
+
+  it("labels activated no-auth providers as activated and manageable", () => {
+    const browserMarkup = renderProvidersPage(
+      {
+        ...providerData,
+        providers: [noAuthProvider],
+        connections: [{ service: "clock", authType: "no_auth", virtual: false, configured: true, metadata: {} }],
+        oauthConfigs: [],
+      },
+      "/providers",
+    );
+    const detailMarkup = renderProvidersPage(
+      {
+        ...providerData,
+        providers: [noAuthProvider],
+        connections: [{ service: "clock", authType: "no_auth", virtual: false, configured: true, metadata: {} }],
+        oauthConfigs: [],
+      },
+      "/providers/clock",
+    );
+
+    expect(browserMarkup).toContain("Activated");
+    expect(browserMarkup).toContain("Manage");
+    expect(detailMarkup).toContain("Activated");
+    expect(detailMarkup).toContain("Saved connections: 1. Select one to manage or add another.");
+    expect(detailMarkup).toContain("No auth");
+  });
+
+  it("shows activate controls for unactivated no-auth providers on the detail page", () => {
+    const markup = renderProvidersPage(
+      {
+        ...providerData,
+        providers: [noAuthProvider],
+        connections: [],
+        oauthConfigs: [],
+      },
+      "/providers/clock",
+    );
+
+    expect(markup).toContain("Activate Clock");
+    expect(markup).toContain("must be activated");
+    expect(markup).not.toContain("Deactivate");
   });
 
   it("shows an OAuth client warning when OAuth config is missing", () => {
@@ -221,7 +272,7 @@ describe("ProvidersPage route shell", () => {
       "/providers/github",
     );
 
-    expect(markup).toContain("Configured");
+    expect(markup).toContain("Activated");
     expect(markup).toContain("Saved connections: 1. Select one to manage or add another.");
     expect(markup).not.toContain("OAuth client required");
     expect(markup).not.toContain('class="form-grid connection-form"');

@@ -13,7 +13,7 @@ By default the database lives at:
 Set `OOMOL_CONNECT_DATA_DIR` to use another directory. The Docker image defaults this to
 `/app/data`, which is intended to be mounted as a volume.
 
-- `no_auth` providers are available as virtual connections and do not store secrets.
+- `no_auth` providers store no secrets, but still need an explicit connection (activate) before they appear in MCP discovery or become executable.
 - `api_key` and `custom_credential` providers store their local secrets in SQLite.
 - `oauth2` providers use user-provided OAuth client configuration and a localhost callback URL.
 

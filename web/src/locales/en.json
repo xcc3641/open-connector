@@ -5,7 +5,7 @@
     "catalogOnly": "Catalog only",
     "clear": "Clear",
     "close": "Close",
-    "connected": "Connected",
+    "connected": "Activated",
     "copied": "Copied {{label}}",
     "copy": "Copy {{label}}",
     "credential": "Credential",
@@ -91,7 +91,7 @@
   },
   "overview": {
     "runtimeReady": "Runtime ready",
-    "connectedProviders": "{{count}} connected providers",
+    "connectedProviders": "{{count}} activated providers",
     "capabilityStatus": "Capability Status",
     "metrics": {
       "providers": "Providers",
@@ -125,7 +125,7 @@
     "statusFilterLabel": "Provider status",
     "filters": {
       "all": "All",
-      "connected": "Connected",
+      "connected": "Activated",
       "notConnected": "Not connected",
       "oauthNeedsConfig": "OAuth needs config"
     },
@@ -144,7 +144,7 @@
     "selectProviderTitle": "Select a provider",
     "selectProviderDescription": "Choose a provider to inspect connection settings.",
     "connectedBy": "Connected by {{authType}}",
-    "configuredBadge": "Configured",
+    "configuredBadge": "Activated",
     "noSetupBadge": "No setup",
     "unconfiguredBadge": "Not connected",
     "oauthClientRequiredBadge": "OAuth client required",
@@ -155,7 +155,7 @@
       "actions": "Actions",
       "auth": "Auth",
       "oauthConfig": "OAuth config",
-      "configured": "Configured",
+      "configured": "Activated",
       "required": "Required",
       "notUsed": "Not used"
     },
@@ -179,7 +179,8 @@
       "saved": "Saved connections: {{count}}. Select one to manage or add another.",
       "oauthClientRequired": "{{name}} needs a local OAuth client before OAuth can start.",
       "notConnected": "Configure local credentials before running credentialed {{name}} actions.",
-      "unavailable": "Connections cannot be configured in the current runtime."
+      "unavailable": "Connections cannot be configured in the current runtime.",
+      "activateNoAuth": "Activate {{name}} to make its no-auth actions available to MCP and local execution."
     },
     "noConnectionMethodTitle": "No connection method",
     "noConnectionMethodDescription": "This provider does not need local credentials.",
@@ -209,7 +210,14 @@
       "failed": "Connection failed.",
       "disconnecting": "Disconnecting...",
       "disconnected": "Disconnected.",
-      "disconnectFailed": "Disconnect failed."
+      "disconnectFailed": "Disconnect failed.",
+      "noAuthInactive": "{{name}} does not need credentials, but must be activated before discovery and execution.",
+      "noAuthActive": "{{name}} is activated. No local credentials are stored.",
+      "activating": "Activating...",
+      "activated": "Activated.",
+      "deactivating": "Deactivating...",
+      "deactivated": "Deactivated.",
+      "deactivateFailed": "Deactivate failed."
     },
     "buttons": {
       "configureOAuthClient": "Configure OAuth Client",
@@ -227,7 +235,10 @@
       "disconnect": "Disconnect",
       "saveOAuthClient": "Save OAuth Client",
       "updateOAuthClient": "Update OAuth Client",
-      "resetOAuthClient": "Reset OAuth Client"
+      "resetOAuthClient": "Reset OAuth Client",
+      "activateProvider": "Activate {{name}}",
+      "activated": "Activated",
+      "deactivate": "Deactivate"
     },
     "oauthClientSettings": {
       "configuredTitle": "OAuth client configured",

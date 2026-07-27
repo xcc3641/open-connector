@@ -31,6 +31,7 @@ import { apiDelete, apiPost, apiPut } from "./api";
 import {
   credentialFieldsFor,
   filterProviders,
+  isNoAuthOnlyProvider,
   resolveProviderConnectionStatus,
   sortProviders,
   usableConnectionsForService,
@@ -375,13 +376,11 @@ function ProviderCard(props: ProviderCardProps): ReactNode {
   const locallyAvailable = isProviderLocallyAvailable(props.provider);
   const actionLabel = !locallyAvailable
     ? t("providers.buttons.details")
-    : props.status.noSetupRequired
-      ? t("providers.buttons.details")
-      : props.status.connected
-        ? t("providers.buttons.manageConnection")
-        : props.status.oauthClientRequired
-          ? t("providers.buttons.configureOAuthClient")
-          : t("providers.buttons.connect");
+    : props.status.connected
+      ? t("providers.buttons.manageConnection")
+      : props.status.oauthClientRequired
+        ? t("providers.buttons.configureOAuthClient")
+        : t("providers.buttons.connect");
 
   return (
     <div className="provider-card" style={providerCardStyle}>
@@ -441,13 +440,6 @@ function ProviderStatusBadges(props: {
         </Badge>,
       );
     }
-  } else if (props.status.noSetupRequired) {
-    badges.push(
-      <Badge key="no-setup">
-        {props.compact ? <CheckCircle2 size={12} /> : null}
-        {t("providers.noSetupBadge")}
-      </Badge>,
-    );
   } else if (props.includeDisconnected) {
     badges.push(<Badge key="not-connected">{t("providers.unconfiguredBadge")}</Badge>);
   }
@@ -508,16 +500,18 @@ function ProviderDetail(props: ProviderDetailProps): ReactNode {
     : undefined;
   const connectionDescription = !locallyAvailable
     ? t("providers.connectionDescriptions.unavailable")
-    : props.connectionStatus.noSetupRequired
-      ? t("providers.connectionDescriptions.noSetup")
-      : creatingConnection
-        ? t("providers.connectionDescriptions.adding")
-        : selectedConnection
-          ? t("providers.connectionDescriptions.connected", {
-              authType: selectedConnection.authType,
-            })
-          : props.connectionStatus.connected
-            ? t("providers.connectionDescriptions.saved", { count: props.connections.length })
+    : creatingConnection
+      ? isNoAuthOnlyProvider(props.provider)
+        ? t("providers.connectionDescriptions.activateNoAuth", { name: props.provider.displayName })
+        : t("providers.connectionDescriptions.adding")
+      : selectedConnection
+        ? t("providers.connectionDescriptions.connected", {
+            authType: authTypeLabel(selectedConnection.authType, t),
+          })
+        : props.connectionStatus.connected
+          ? t("providers.connectionDescriptions.saved", { count: props.connections.length })
+          : isNoAuthOnlyProvider(props.provider)
+            ? t("providers.connectionDescriptions.activateNoAuth", { name: props.provider.displayName })
             : props.connectionStatus.oauthClientRequired
               ? t("providers.connectionDescriptions.oauthClientRequired", { name: props.provider.displayName })
               : t("providers.connectionDescriptions.notConnected", { name: props.provider.displayName });
@@ -772,8 +766,8 @@ export function isProviderLocallyAvailable(provider: ProviderDefinition): boolea
   return provider.actions.length === 0 || provider.actions.some((action) => action.execution.locallyExecutable);
 }
 
-export function shouldShowConnectionActions(auth: AuthDefinition): boolean {
-  return auth.type !== "no_auth";
+export function shouldShowConnectionActions(_auth: AuthDefinition): boolean {
+  return true;
 }
 
 export function shouldShowDisconnectAction(connection: AppData["connections"][number] | undefined): boolean {
@@ -785,6 +779,9 @@ export function shouldEnableConnectionSubmit(auth: AuthDefinition, oauthConfig: 
 }
 
 export function connectionSubmitLabel(auth: AuthDefinition, connected: boolean, providerName: string): string {
+  if (auth.type === "no_auth") {
+    return connected ? "Activated" : `Activate ${providerName}`;
+  }
   if (auth.type === "oauth2") {
     return `${connected ? "Reconnect" : "Connect"} ${providerName}`;
   }
@@ -1057,13 +1054,17 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
   const canSubmit =
     props.connectionName.length > 0 &&
     props.connectionNameValid &&
-    shouldEnableConnectionSubmit(props.auth, props.oauthConfig);
+    (props.auth.type === "no_auth" ? !connected : shouldEnableConnectionSubmit(props.auth, props.oauthConfig));
   const submitLabel =
-    props.auth.type === "oauth2"
-      ? t(connected ? "providers.buttons.reconnectProvider" : "providers.buttons.connectProvider", {
-          name: props.provider.displayName,
-        })
-      : t("providers.buttons.saveConnection");
+    props.auth.type === "no_auth"
+      ? connected
+        ? t("providers.buttons.activated")
+        : t("providers.buttons.activateProvider", { name: props.provider.displayName })
+      : props.auth.type === "oauth2"
+        ? t(connected ? "providers.buttons.reconnectProvider" : "providers.buttons.connectProvider", {
+            name: props.provider.displayName,
+          })
+        : t("providers.buttons.saveConnection");
 
   useEffect(
     () => () => {
@@ -1092,7 +1093,9 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
     setStatus(
       props.auth.type === "oauth2"
         ? t("providers.connectionMessages.openingOAuth")
-        : t("providers.connectionMessages.saving"),
+        : props.auth.type === "no_auth"
+          ? t("providers.connectionMessages.activating")
+          : t("providers.connectionMessages.saving"),
     );
     props.onConnectionPendingChange?.(connectionName);
     try {
@@ -1133,7 +1136,11 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
         setStatus(t("providers.connectionMessages.oauthWindowOpened"));
         return;
       }
-      setStatus(t("providers.connectionMessages.updated"));
+      setStatus(
+        props.auth.type === "no_auth"
+          ? t("providers.connectionMessages.activated")
+          : t("providers.connectionMessages.updated"),
+      );
       props.onRefresh();
     } catch (error) {
       props.onConnectionPendingChange?.(undefined);
@@ -1142,22 +1149,40 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
   }
 
   async function disconnect(): Promise<void> {
-    setStatus(t("providers.connectionMessages.disconnecting"));
+    setStatus(
+      props.auth.type === "no_auth"
+        ? t("providers.connectionMessages.deactivating")
+        : t("providers.connectionMessages.disconnecting"),
+    );
     try {
       await apiDelete(connectionDeletePath(props.provider.service, props.connectionName));
-      setStatus(t("providers.connectionMessages.disconnected"));
+      setStatus(
+        props.auth.type === "no_auth"
+          ? t("providers.connectionMessages.deactivated")
+          : t("providers.connectionMessages.disconnected"),
+      );
       props.onRefresh();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : t("providers.connectionMessages.disconnectFailed"));
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : props.auth.type === "no_auth"
+            ? t("providers.connectionMessages.deactivateFailed")
+            : t("providers.connectionMessages.disconnectFailed"),
+      );
     }
   }
 
   return (
     <form className="form-grid connection-form" onSubmit={(event) => void submit(event)}>
       {props.auth.type === "no_auth" ? (
-        <Alert variant="success">
-          <CheckCircle2 size={16} />
-          <AlertDescription>{t("providers.connectionMessages.noAuth")}</AlertDescription>
+        <Alert variant={connected ? "success" : "default"}>
+          {connected ? <CheckCircle2 size={16} /> : <Settings size={16} />}
+          <AlertDescription>
+            {connected
+              ? t("providers.connectionMessages.noAuthActive", { name: props.provider.displayName })
+              : t("providers.connectionMessages.noAuthInactive", { name: props.provider.displayName })}
+          </AlertDescription>
         </Alert>
       ) : null}
       {props.auth.type === "oauth2" ? (
@@ -1196,7 +1221,7 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
           {shouldShowDisconnectAction(props.connection) ? (
             <Button variant="outline" type="button" onClick={() => void disconnect()}>
               <Trash2 size={16} />
-              {t("providers.buttons.disconnect")}
+              {t(props.auth.type === "no_auth" ? "providers.buttons.deactivate" : "providers.buttons.disconnect")}
             </Button>
           ) : null}
         </div>

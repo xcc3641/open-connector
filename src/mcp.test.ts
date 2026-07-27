@@ -123,31 +123,45 @@ describe("MCP server", () => {
       const instructions = client.getInstructions();
 
       expect(instructions).toBeTypeOf("string");
-      expect(instructions).toContain("never expose unconfigured credential-backed providers");
+      expect(instructions).toContain("Unconfigured providers are never exposed through MCP discovery");
       expect(instructions).toContain("Use list_connections before choosing among multiple configured accounts");
       expect(instructions).toContain("Call get_action_guide before execute_action");
     });
   });
 
-  it("lists configured apps by default and public no-auth apps only when requested", async () => {
+  it("lists only explicitly activated apps, including activated no-auth apps", async () => {
     await withMcpClient(async (client) => {
       const defaults = await client.callTool({
         name: "list_apps",
         arguments: {},
       });
-      const withVirtual = await client.callTool({
-        name: "list_apps",
-        arguments: { includeVirtual: true },
-      });
 
-      // example is no_auth/virtual; locked needs a key and is not connected.
-      expect(defaults.structuredContent).toEqual({ ok: true, data: [] });
-      expect(withVirtual.structuredContent).toMatchObject({
+      // example is activated no-auth; locked needs a key and is not connected.
+      expect(defaults.structuredContent).toMatchObject({
         ok: true,
-        data: [{ service: "example", connection: { virtual: true, configured: true } }],
+        data: [{ service: "example", connection: { virtual: false, configured: true } }],
       });
-      expect((withVirtual.structuredContent as { data: unknown[] }).data).toHaveLength(1);
+      expect((defaults.structuredContent as { data: unknown[] }).data).toHaveLength(1);
     });
+  });
+
+  it("hides no-auth apps until they are explicitly activated", async () => {
+    await withMcpClient(
+      async (client) => {
+        const defaults = await client.callTool({
+          name: "list_apps",
+          arguments: {},
+        });
+        const search = await client.callTool({
+          name: "search_actions",
+          arguments: { query: "echo", limit: 10 },
+        });
+
+        expect(defaults.structuredContent).toEqual({ ok: true, data: [] });
+        expect(search.structuredContent).toEqual({ ok: true, data: [] });
+      },
+      { activateNoAuth: false },
+    );
   });
 
   it("includes stored credential connections in app and action discovery", async () => {
@@ -188,7 +202,11 @@ describe("MCP server", () => {
         arguments: { service: "locked", limit: 10 },
       });
 
-      expect(defaults.structuredContent).toEqual({ ok: true, data: [] });
+      // activated no-auth example.echo is available; locked remains excluded until configured
+      expect(defaults.structuredContent).toMatchObject({
+        ok: true,
+        data: [{ id: "example.echo", service: "example" }],
+      });
       expect(byQuery.structuredContent).toEqual({ ok: true, data: [] });
       expect(byService.structuredContent).toEqual({ ok: true, data: [] });
     });
@@ -198,7 +216,7 @@ describe("MCP server", () => {
     await withMcpClient(async (client) => {
       const search = await client.callTool({
         name: "search_actions",
-        arguments: { query: "echo", includeVirtual: true, limit: 1 },
+        arguments: { query: "echo", limit: 1 },
       });
       const run = await client.callTool({
         name: "execute_action",
@@ -571,7 +589,7 @@ describe("MCP server", () => {
 
 async function withMcpClient(
   run: (client: Client) => Promise<void>,
-  policy: {
+  options: {
     getPolicySnapshot?(): Promise<ActionPolicySnapshot>;
     runtimeGrant?: {
       tokenId: string;
@@ -579,8 +597,10 @@ async function withMcpClient(
       blockedActions: string[];
       allowedProxies: string[];
     };
+    activateNoAuth?: boolean;
   } = {},
 ): Promise<void> {
+  const { activateNoAuth = true, ...policy } = options;
   const catalog = createCatalogStore([exampleProvider, lockedProvider], {
     executableActionIds: ["example.echo", "locked.echo"],
   });
@@ -590,6 +610,9 @@ async function withMcpClient(
     providerLoader,
     store: new MemoryConnectionStore(),
   });
+  if (activateNoAuth) {
+    await connections.connectWithoutAuth("example");
+  }
   const actions = new ActionRunner({
     catalog,
     providerLoader,

@@ -5,7 +5,7 @@
     "catalogOnly": "僅供目錄查閱",
     "clear": "清除",
     "close": "關閉",
-    "connected": "已連線",
+    "connected": "已啟用",
     "copied": "已複製 {{label}}",
     "copy": "複製 {{label}}",
     "credential": "憑證",
@@ -91,7 +91,7 @@
   },
   "overview": {
     "runtimeReady": "執行階段已就緒",
-    "connectedProviders": "已連線 {{count}} 個服務提供者",
+    "connectedProviders": "{{count}} 個已啟用服務提供者",
     "capabilityStatus": "功能狀態",
     "metrics": {
       "providers": "服務提供者",
@@ -125,7 +125,7 @@
     "statusFilterLabel": "服務提供者狀態",
     "filters": {
       "all": "全部",
-      "connected": "已連線",
+      "connected": "已啟用",
       "notConnected": "尚未連線",
       "oauthNeedsConfig": "OAuth 需要設定"
     },
@@ -144,7 +144,7 @@
     "selectProviderTitle": "選取服務提供者",
     "selectProviderDescription": "選取服務提供者以檢視連線設定。",
     "connectedBy": "透過 {{authType}} 連線",
-    "configuredBadge": "已設定",
+    "configuredBadge": "已啟用",
     "noSetupBadge": "無須設定",
     "unconfiguredBadge": "尚未連線",
     "oauthClientRequiredBadge": "需要 OAuth 用戶端",
@@ -155,7 +155,7 @@
       "actions": "動作",
       "auth": "驗證",
       "oauthConfig": "OAuth 設定",
-      "configured": "已設定",
+      "configured": "已啟用",
       "required": "必要",
       "notUsed": "未使用"
     },
@@ -179,7 +179,8 @@
       "saved": "已有 {{count}} 個已儲存的連線。請選擇一個進行管理，或新增連線。",
       "oauthClientRequired": "{{name}} 需要本機 OAuth 用戶端才能啟動 OAuth。",
       "notConnected": "執行需要憑證的 {{name}} 動作前，請先設定本機憑證。",
-      "unavailable": "目前的執行階段無法設定連線。"
+      "unavailable": "目前的執行階段無法設定連線。",
+      "activateNoAuth": "啟用 {{name}} 後，其無須驗證的操作才會出現在 MCP 探索中並可本機執行。"
     },
     "noConnectionMethodTitle": "無連線方式",
     "noConnectionMethodDescription": "此服務提供者不需要本機憑證。",
@@ -209,7 +210,14 @@
       "failed": "連線失敗。",
       "disconnecting": "正在中斷連線...",
       "disconnected": "已中斷連線。",
-      "disconnectFailed": "中斷連線失敗。"
+      "disconnectFailed": "中斷連線失敗。",
+      "noAuthInactive": "{{name}} 不需要憑證，但必須先啟用才會出現在探索列表並允許執行。",
+      "noAuthActive": "{{name}} 已啟用。不會儲存本機憑證。",
+      "activating": "正在啟用...",
+      "activated": "已啟用。",
+      "deactivating": "正在取消啟用...",
+      "deactivated": "已取消啟用。",
+      "deactivateFailed": "取消啟用失敗。"
     },
     "buttons": {
       "configureOAuthClient": "設定 OAuth 用戶端",
@@ -227,7 +235,10 @@
       "disconnect": "中斷連線",
       "saveOAuthClient": "儲存 OAuth 用戶端",
       "updateOAuthClient": "更新 OAuth 用戶端",
-      "resetOAuthClient": "重設 OAuth 用戶端"
+      "resetOAuthClient": "重設 OAuth 用戶端",
+      "activateProvider": "啟用 {{name}}",
+      "activated": "已啟用",
+      "deactivate": "取消啟用"
     },
     "oauthClientSettings": {
       "configuredTitle": "OAuth 用戶端已設定",

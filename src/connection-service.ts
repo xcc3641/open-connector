@@ -112,8 +112,8 @@ type OAuthCredential = Extract<ResolvedCredential, { authType: "oauth2" }>;
 /**
  * Coordinates local provider connection state.
  *
- * No-auth providers are treated as virtual connections so open-source users can
- * run public actions without configuration.
+ * No-auth providers still need an explicit connection (activate) before they
+ * appear in discovery or become executable. They just store no secrets.
  */
 export class ConnectionService {
   private readonly catalog: CatalogStore;
@@ -146,27 +146,6 @@ export class ConnectionService {
 
     return this.catalog.providers.flatMap((provider) => {
       const connections = configuredByService.get(provider.service) ?? [];
-      if (connections.length > 0) {
-        return connections.map((connection) =>
-          this.createConfiguredConnectionSummary(
-            provider,
-            connection.id,
-            connection.connectionName,
-            connection.credential,
-          ),
-        );
-      }
-
-      return this.supportsAuth(provider, "no_auth")
-        ? [this.createNoAuthConnectionSummary(provider, defaultConnectionName)]
-        : [];
-    });
-  }
-
-  async listConnectionsByService(service: string): Promise<ConnectionSummary[]> {
-    const provider = this.getProvider(service);
-    const connections = (await this.store.list()).filter((connection) => connection.service === service);
-    if (connections.length > 0) {
       return connections.map((connection) =>
         this.createConfiguredConnectionSummary(
           provider,
@@ -175,11 +154,15 @@ export class ConnectionService {
           connection.credential,
         ),
       );
-    }
+    });
+  }
 
-    return this.supportsAuth(provider, "no_auth")
-      ? [this.createNoAuthConnectionSummary(provider, defaultConnectionName)]
-      : [];
+  async listConnectionsByService(service: string): Promise<ConnectionSummary[]> {
+    const provider = this.getProvider(service);
+    const connections = (await this.store.list()).filter((connection) => connection.service === service);
+    return connections.map((connection) =>
+      this.createConfiguredConnectionSummary(provider, connection.id, connection.connectionName, connection.credential),
+    );
   }
 
   async listAuthenticatedServices(services: string[]): Promise<string[]> {
@@ -193,38 +176,39 @@ export class ConnectionService {
   }
 
   async getConnectionSummary(service: string, connectionName?: string): Promise<ConnectionSummary | undefined> {
-    const provider = this.getProvider(service);
+    this.getProvider(service);
     const name = normalizeConnectionName(connectionName);
     const stored = await this.store.get(service, name);
-    if (!stored && connectionName && !this.supportsAuth(provider, "no_auth")) {
-      throw new ConnectionError("connection_not_found", `${service} connection not found: ${name}.`);
+    if (!stored) {
+      if (connectionName) {
+        throw new ConnectionError("connection_not_found", `${service} connection not found: ${name}.`);
+      }
+      return undefined;
     }
 
-    return stored
-      ? this.createConfiguredConnectionSummary(provider, stored.id, name, stored.credential)
-      : this.supportsAuth(provider, "no_auth")
-        ? this.createNoAuthConnectionSummary(provider, name)
-        : undefined;
+    const provider = this.getProvider(service);
+    return this.createConfiguredConnectionSummary(provider, stored.id, name, stored.credential);
   }
 
   async resolveForExecution(service: string, connectionName?: string): Promise<ExecutionConnection> {
     const provider = this.getProvider(service);
     const name = normalizeConnectionName(connectionName);
     const stored = await this.store.get(service, name);
-    if (!stored && connectionName && !this.supportsAuth(provider, "no_auth")) {
-      throw new ConnectionError("connection_not_found", `${service} connection not found: ${name}.`);
+    if (!stored) {
+      if (connectionName) {
+        throw new ConnectionError("connection_not_found", `${service} connection not found: ${name}.`);
+      }
+      return {
+        summary: undefined,
+        getCredential: async () => undefined,
+      };
     }
 
-    let credential: ResolvedCredential | undefined = stored?.credential;
-    if (stored?.credential.authType === "oauth2") {
+    let credential: ResolvedCredential = stored.credential;
+    if (stored.credential.authType === "oauth2") {
       credential = await this.resolveOAuthCredential(stored, stored.credential);
     }
-    credential ??= this.supportsAuth(provider, "no_auth") ? { authType: "no_auth" } : undefined;
-    const summary = stored
-      ? this.createConfiguredConnectionSummary(provider, stored.id, name, credential!)
-      : credential
-        ? this.createNoAuthConnectionSummary(provider, name)
-        : undefined;
+    const summary = this.createConfiguredConnectionSummary(provider, stored.id, name, credential);
 
     return {
       summary,
@@ -233,7 +217,7 @@ export class ConnectionService {
   }
 
   async getCredential(service: string, connectionName?: string): Promise<ResolvedCredential | undefined> {
-    const provider = this.getProvider(service);
+    this.getProvider(service);
     const name = normalizeConnectionName(connectionName);
     const stored = await this.store.get(service, name);
     if (stored) {
@@ -242,11 +226,11 @@ export class ConnectionService {
         : stored.credential;
     }
 
-    if (connectionName && !this.supportsAuth(provider, "no_auth")) {
+    if (connectionName) {
       throw new ConnectionError("connection_not_found", `${service} connection not found: ${name}.`);
     }
 
-    return this.supportsAuth(provider, "no_auth") ? { authType: "no_auth" } : undefined;
+    return undefined;
   }
 
   forConnection(connectionName?: string): Pick<ConnectionService, "getCredential"> {
@@ -261,7 +245,10 @@ export class ConnectionService {
       throw new ConnectionError("unsupported_auth_type", `${service} does not support no_auth.`);
     }
 
-    return this.createNoAuthConnectionSummary(provider, normalizeConnectionName(input.connectionName));
+    const connectionName = normalizeConnectionName(input.connectionName);
+    const credential: ResolvedCredential = { authType: "no_auth" };
+    const stored = await this.store.set(service, connectionName, credential);
+    return this.createConfiguredConnectionSummary(provider, stored.id, connectionName, credential);
   }
 
   async connectWithApiKey(service: string, input: ConnectWithCredentialInput): Promise<ConnectionSummary> {
@@ -358,11 +345,6 @@ export class ConnectionService {
   ): Promise<ConnectionSummary | DisconnectedConnectionSummary> {
     const connectionName = normalizeConnectionName(connectionNameInput);
     await this.store.delete(service, connectionName);
-    const provider = this.catalog.providers.find((provider) => provider.service === service);
-    if (provider && this.supportsAuth(provider, "no_auth")) {
-      return this.connectWithoutAuth(service, { connectionName });
-    }
-
     return { service, connectionName, configured: false };
   }
 

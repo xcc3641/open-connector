@@ -43,7 +43,7 @@ const mcpToolSummaries: IMcpToolSummary[] = [
     name: "list_apps",
     title: "List Apps",
     description:
-      "List provider apps currently available to MCP. Defaults to configured credential-backed apps; optionally include public no-auth apps.",
+      "List provider apps currently available to MCP: configured credential-backed apps and explicitly activated no-auth apps. Unconfigured providers are never exposed.",
   },
   {
     name: "list_connections",
@@ -54,7 +54,7 @@ const mcpToolSummaries: IMcpToolSummary[] = [
     name: "search_actions",
     title: "Search Actions",
     description:
-      "Search actions currently available to MCP. Defaults to configured credential-backed apps; optionally include public no-auth apps.",
+      "Search actions currently available to MCP: configured credential-backed apps and explicitly activated no-auth apps. Unconfigured providers are never exposed.",
   },
   {
     name: "get_action_guide",
@@ -70,8 +70,8 @@ const mcpToolSummaries: IMcpToolSummary[] = [
 
 const mcpServerInstructions = [
   "Use OpenConnector to discover and execute provider actions through a small tool set.",
-  "Start with list_apps or search_actions; both default to configured credential-backed providers and never expose unconfigured credential-backed providers.",
-  "Only include public no-auth providers when the user request needs them.",
+  "Start with list_apps or search_actions; both return currently available providers: configured credential-backed apps and explicitly activated no-auth apps.",
+  "Unconfigured providers are never exposed through MCP discovery. Activate a no-auth app before using it.",
   "Use list_connections before choosing among multiple configured accounts.",
   "Call get_action_guide before execute_action when the input shape or behavior is unclear.",
   "Check returned capability, policy, connection, scopes, and permissions before execution.",
@@ -117,17 +117,12 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
     {
       title: "List Apps",
       description:
-        "List provider apps currently available to MCP. Defaults to configured credential-backed apps. Set includeVirtual=true to include public no-auth apps. Unconfigured credential-backed providers are never exposed.",
+        "List provider apps currently available to MCP. Returns configured credential-backed apps and explicitly activated no-auth apps. Unconfigured providers are never exposed.",
       inputSchema: {
         query: z.string().optional().describe("Optional case-insensitive app name, service, category, or auth filter."),
-        includeVirtual: z
-          .boolean()
-          .default(false)
-          .describe("Also include public no-auth apps. Defaults to false to keep MCP context small."),
       },
     },
-    async ({ query, includeVirtual }) =>
-      toolResult(successPayload(await listApps(options, { query, includeVirtual: includeVirtual ?? false }))),
+    async ({ query }) => toolResult(successPayload(await listApps(options, { query }))),
   );
 
   server.registerTool(
@@ -148,22 +143,17 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
     {
       title: "Search Actions",
       description:
-        "Search actions currently available to MCP. Defaults to configured credential-backed apps. Set includeVirtual=true to include public no-auth apps. Unconfigured credential-backed providers are always excluded. Use this before requesting an action guide.",
+        "Search actions currently available to MCP. Searches configured credential-backed apps and explicitly activated no-auth apps. Unconfigured providers are always excluded. Use this before requesting an action guide.",
       inputSchema: {
         query: z
           .string()
           .optional()
           .describe("Optional case-insensitive search text matched against action id, name, description, and scopes."),
         service: z.string().optional().describe("Optional provider service id among currently available apps."),
-        includeVirtual: z
-          .boolean()
-          .default(false)
-          .describe("Also search public no-auth apps. Defaults to false to keep MCP context small."),
         limit: z.number().int().min(1).max(50).default(20).describe("Maximum number of actions to return."),
       },
     },
-    async ({ query, service, includeVirtual, limit }) =>
-      toolResult(await searchActions(options, { query, service, includeVirtual: includeVirtual ?? false, limit })),
+    async ({ query, service, limit }) => toolResult(await searchActions(options, { query, service, limit })),
   );
 
   server.registerTool(
@@ -212,12 +202,9 @@ async function listConnections(options: IMcpServerOptions, service: string | und
   }
 }
 
-async function listApps(
-  options: IMcpServerOptions,
-  input: { query?: string; includeVirtual: boolean },
-): Promise<unknown> {
+async function listApps(options: IMcpServerOptions, input: { query?: string }): Promise<unknown> {
   const normalized = input.query?.trim().toLowerCase();
-  const availableConnections = await listAvailableConnections(options, input.includeVirtual);
+  const availableConnections = await listAvailableConnections(options);
   return options.catalog.providers
     .filter((provider) => {
       if (!availableConnections.has(provider.service)) {
@@ -245,7 +232,7 @@ async function listApps(
 
 async function searchActions(
   options: IMcpServerOptions,
-  input: { query?: string; service?: string; includeVirtual: boolean; limit: number },
+  input: { query?: string; service?: string; limit: number },
 ): Promise<ToolPayload> {
   let policy: ActionPolicySnapshot;
   try {
@@ -254,7 +241,7 @@ async function searchActions(
     return errorPayload("internal_error", "Runtime policy is unavailable.");
   }
   const query = input.query?.trim();
-  const availableServices = new Set((await listAvailableConnections(options, input.includeVirtual)).keys());
+  const availableServices = new Set((await listAvailableConnections(options)).keys());
   const actionSearch = options.actionSearch ?? createActionSearchIndexProvider(options.catalog.actions);
   const rankedActions = query
     ? searchActionIndex(await actionSearch.get(), query, {
@@ -281,15 +268,16 @@ async function searchActions(
   return successPayload(await Promise.all(actions));
 }
 
-async function listAvailableConnections(
-  options: IMcpServerOptions,
-  includeVirtual: boolean,
-): Promise<Map<string, ConnectionSummary>> {
+/**
+ * Connections currently usable by MCP discovery/execution.
+ *
+ * Includes configured credential-backed connections and explicitly activated
+ * no-auth connections. Unconfigured providers never appear here.
+ * The internal `virtual` flag is a storage detail, not a discovery gate.
+ */
+async function listAvailableConnections(options: IMcpServerOptions): Promise<Map<string, ConnectionSummary>> {
   const available = new Map<string, ConnectionSummary>();
   for (const connection of await options.connections.listConnections()) {
-    if (!includeVirtual && connection.virtual) {
-      continue;
-    }
     const selected = available.get(connection.service);
     if (!selected || connection.default) {
       available.set(connection.service, connection);

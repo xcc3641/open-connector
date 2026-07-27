@@ -5,7 +5,7 @@
     "catalogOnly": "カタログのみ",
     "clear": "クリア",
     "close": "閉じる",
-    "connected": "接続済み",
+    "connected": "有効",
     "copied": "{{label}} をコピーしました",
     "copy": "{{label}} をコピー",
     "credential": "認証情報",
@@ -91,7 +91,7 @@
   },
   "overview": {
     "runtimeReady": "ランタイム準備完了",
-    "connectedProviders": "{{count}} 件の接続済みプロバイダー",
+    "connectedProviders": "有効なプロバイダー {{count}}",
     "capabilityStatus": "能力ステータス",
     "metrics": {
       "providers": "プロバイダー",
@@ -125,7 +125,7 @@
     "statusFilterLabel": "プロバイダーのステータス",
     "filters": {
       "all": "すべて",
-      "connected": "接続済み",
+      "connected": "有効",
       "notConnected": "未接続",
       "oauthNeedsConfig": "OAuth 設定が必要"
     },
@@ -144,7 +144,7 @@
     "selectProviderTitle": "プロバイダーを選択",
     "selectProviderDescription": "接続設定を確認するプロバイダーを選択してください。",
     "connectedBy": "{{authType}} で接続済み",
-    "configuredBadge": "設定済み",
+    "configuredBadge": "有効",
     "noSetupBadge": "設定不要",
     "unconfiguredBadge": "未接続",
     "oauthClientRequiredBadge": "OAuth client が必要",
@@ -155,7 +155,7 @@
       "actions": "アクション",
       "auth": "認証",
       "oauthConfig": "OAuth 設定",
-      "configured": "設定済み",
+      "configured": "有効",
       "required": "必須",
       "notUsed": "未使用"
     },
@@ -179,7 +179,8 @@
       "saved": "保存済みの接続が {{count}} 件あります。管理する接続を選択するか、新しい接続を追加してください。",
       "oauthClientRequired": "{{name}} で OAuth を開始するには、ローカル OAuth client が必要です。",
       "notConnected": "認証情報が必要な {{name}} アクションを実行する前に、ローカル認証情報を設定してください。",
-      "unavailable": "現在のランタイムでは接続を設定できません。"
+      "unavailable": "現在のランタイムでは接続を設定できません。",
+      "activateNoAuth": "{{name}} を有効化すると、認証不要アクションが MCP 検出とローカル実行で使えるようになります。"
     },
     "noConnectionMethodTitle": "接続方式はありません",
     "noConnectionMethodDescription": "このプロバイダーはローカル認証情報を必要としません。",
@@ -209,7 +210,14 @@
       "failed": "接続に失敗しました。",
       "disconnecting": "切断中...",
       "disconnected": "切断しました。",
-      "disconnectFailed": "切断に失敗しました。"
+      "disconnectFailed": "切断に失敗しました。",
+      "noAuthInactive": "{{name}} に認証情報は不要ですが、検出と実行の前に有効化が必要です。",
+      "noAuthActive": "{{name}} は有効です。ローカル認証情報は保存されません。",
+      "activating": "有効化中...",
+      "activated": "有効化しました。",
+      "deactivating": "無効化中...",
+      "deactivated": "無効化しました。",
+      "deactivateFailed": "無効化に失敗しました。"
     },
     "buttons": {
       "configureOAuthClient": "OAuth Client を設定",
@@ -227,7 +235,10 @@
       "disconnect": "切断",
       "saveOAuthClient": "OAuth Client を保存",
       "updateOAuthClient": "OAuth Client を更新",
-      "resetOAuthClient": "OAuth Client をリセット"
+      "resetOAuthClient": "OAuth Client をリセット",
+      "activateProvider": "{{name}} を有効化",
+      "activated": "有効",
+      "deactivate": "無効化"
     },
     "oauthClientSettings": {
       "configuredTitle": "OAuth client 設定済み",

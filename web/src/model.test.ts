@@ -118,7 +118,7 @@ describe("createOverviewSummary", () => {
     });
   });
 
-  it("does not count virtual no-auth connections as connected providers", () => {
+  it("does not count virtual ghost no-auth connections as connected providers", () => {
     expect(
       createOverviewSummary({
         ...emptyAppData,
@@ -128,6 +128,18 @@ describe("createOverviewSummary", () => {
         ],
       }).connectedCount,
     ).toBe(1);
+  });
+
+  it("counts explicitly activated no-auth connections as connected providers", () => {
+    expect(
+      createOverviewSummary({
+        ...emptyAppData,
+        connections: [
+          { service: "clock", authType: "no_auth", virtual: false, configured: true, metadata: {} },
+          { service: "github", authType: "oauth2", configured: true, metadata: {} },
+        ],
+      }).connectedCount,
+    ).toBe(2);
   });
 
   it("counts all failed runs while keeping the display list capped", () => {
@@ -149,7 +161,33 @@ describe("createOverviewSummary", () => {
 });
 
 describe("resolveProviderConnectionStatus", () => {
-  it("treats no-auth-only providers as no-setup instead of connected", () => {
+  it("treats unactivated no-auth-only providers as disconnected", () => {
+    const status = resolveProviderConnectionStatus(provider("clock", "Clock"), [], []);
+
+    expect(status).toMatchObject({
+      noSetupRequired: false,
+      connected: false,
+      oauthClientRequired: false,
+    });
+    expect(status.connection).toBeUndefined();
+  });
+
+  it("treats explicitly activated no-auth providers as connected", () => {
+    const status = resolveProviderConnectionStatus(
+      provider("clock", "Clock"),
+      [{ service: "clock", authType: "no_auth", virtual: false, configured: true, metadata: {} }],
+      [],
+    );
+
+    expect(status).toMatchObject({
+      noSetupRequired: false,
+      connected: true,
+      oauthClientRequired: false,
+    });
+    expect(status.connection?.authType).toBe("no_auth");
+  });
+
+  it("ignores virtual ghost no-auth connections", () => {
     const status = resolveProviderConnectionStatus(
       provider("clock", "Clock"),
       [{ service: "clock", authType: "no_auth", virtual: true, metadata: {} }],
@@ -157,9 +195,8 @@ describe("resolveProviderConnectionStatus", () => {
     );
 
     expect(status).toMatchObject({
-      noSetupRequired: true,
+      noSetupRequired: false,
       connected: false,
-      oauthClientRequired: false,
     });
     expect(status.connection).toBeUndefined();
   });
@@ -219,7 +256,7 @@ describe("resolveProviderConnectionStatus", () => {
     expect(status.connections).toHaveLength(2);
   });
 
-  it("excludes virtual, no-auth, and explicitly unconfigured records", () => {
+  it("excludes virtual and explicitly unconfigured records while keeping activated no-auth records", () => {
     const status = resolveProviderConnectionStatus(
       oauthProvider("slack", "Slack"),
       [
@@ -231,7 +268,7 @@ describe("resolveProviderConnectionStatus", () => {
       [{ service: "slack", configured: true, clientId: "slack-client-id" }],
     );
 
-    expect(status.connections.map((connection) => connection.connectionName)).toEqual(["work"]);
+    expect(status.connections.map((connection) => connection.connectionName)).toEqual(["work", "anonymous"]);
   });
 });
 
