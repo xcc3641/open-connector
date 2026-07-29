@@ -191,7 +191,7 @@ class UnusedD1Database implements D1DatabaseBinding {
 class MemoryD1Database implements D1DatabaseBinding {
   private readonly connections = new Map<
     string,
-    { id: string; service: string; connection_name: string; value: string; updated_at: string }
+    { id: string; revision: string; service: string; connection_name: string; value: string; updated_at: string }
   >();
 
   prepare(query: string): D1PreparedStatementBinding {
@@ -205,14 +205,14 @@ class MemoryD1Statement implements D1PreparedStatementBinding {
   private readonly query: string;
   private readonly connections: Map<
     string,
-    { id: string; service: string; connection_name: string; value: string; updated_at: string }
+    { id: string; revision: string; service: string; connection_name: string; value: string; updated_at: string }
   >;
 
   constructor(
     query: string,
     connections: Map<
       string,
-      { id: string; service: string; connection_name: string; value: string; updated_at: string }
+      { id: string; revision: string; service: string; connection_name: string; value: string; updated_at: string }
     >,
   ) {
     this.query = query;
@@ -225,35 +225,51 @@ class MemoryD1Statement implements D1PreparedStatementBinding {
   }
 
   async first<T>(): Promise<T | null> {
-    if (this.query.startsWith("select id, value from connections")) {
+    if (this.query.startsWith("select id, revision, value from connections")) {
       const [service, connectionName] = this.values as [string, string];
       const row = this.connections.get(`${service}:${connectionName}`);
-      return row ? ({ id: row.id, value: row.value } as T) : null;
+      return row ? ({ id: row.id, revision: row.revision, value: row.value } as T) : null;
     }
 
     if (this.query.includes("insert into connections")) {
-      const [id, service, connectionName, value, updatedAt] = this.values as [string, string, string, string, string];
+      const [id, revision, service, connectionName, value, updatedAt] = this.values as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
       const key = `${service}:${connectionName}`;
       const existing = this.connections.get(key);
       const row = {
         id: existing?.id ?? id,
+        revision,
         service,
         connection_name: connectionName,
         value,
         updated_at: updatedAt,
       };
       this.connections.set(key, row);
-      return { id: row.id } as T;
+      return { id: row.id, revision: row.revision } as T;
     }
 
     if (this.query.startsWith("update connections")) {
-      const [value, updatedAt, service, connectionName, id] = this.values as [string, string, string, string, string];
+      const [revision, value, updatedAt, service, connectionName, id, expectedRevision] = this.values as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
       const key = `${service}:${connectionName}`;
       const existing = this.connections.get(key);
-      if (!existing || existing.id !== id) {
+      if (!existing || existing.id !== id || existing.revision !== expectedRevision) {
         return null;
       }
-      const row = { ...existing, value, updated_at: updatedAt };
+      const row = { ...existing, revision, value, updated_at: updatedAt };
       this.connections.set(key, row);
       return { id: row.id } as T;
     }
@@ -262,10 +278,11 @@ class MemoryD1Statement implements D1PreparedStatementBinding {
   }
 
   async all<T>(): Promise<{ results: T[] }> {
-    if (this.query.startsWith("select id, service, connection_name, value from connections")) {
+    if (this.query.startsWith("select id, revision, service, connection_name, value from connections")) {
       return {
         results: [...this.connections.values()].map((row) => ({
           id: row.id,
+          revision: row.revision,
           service: row.service,
           connection_name: row.connection_name,
           value: row.value,

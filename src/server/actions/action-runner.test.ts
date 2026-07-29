@@ -190,22 +190,54 @@ class TestProviderLoader implements IProviderLoader {
 }
 
 class MemoryConnectionStore implements IConnectionStore {
-  async get(): Promise<StoredConnection | undefined> {
-    return undefined;
+  private readonly connections = new Map<string, StoredConnection>([
+    [
+      "example:default",
+      {
+        id: "example:default",
+        revision: "revision-default",
+        service: "example",
+        connectionName: "default",
+        credential: { authType: "no_auth" },
+      },
+    ],
+  ]);
+
+  async get(service: string, connectionName: string): Promise<StoredConnection | undefined> {
+    return this.connections.get(this.key(service, connectionName));
   }
 
   async set(service: string, connectionName: string, credential: ResolvedCredential): Promise<StoredConnection> {
-    return { id: crypto.randomUUID(), revision: crypto.randomUUID(), service, connectionName, credential };
+    const key = this.key(service, connectionName);
+    const connection = {
+      id: this.connections.get(key)?.id ?? crypto.randomUUID(),
+      revision: crypto.randomUUID(),
+      service,
+      connectionName,
+      credential,
+    };
+    this.connections.set(key, connection);
+    return connection;
   }
 
-  async updateCredential(): Promise<boolean> {
-    return false;
+  async updateCredential(input: StoredConnection): Promise<boolean> {
+    const key = this.key(input.service, input.connectionName);
+    const current = this.connections.get(key);
+    if (current?.id !== input.id || current.revision !== input.revision) return false;
+    this.connections.set(key, { ...input, revision: crypto.randomUUID() });
+    return true;
   }
 
-  async delete(): Promise<void> {}
+  async delete(service: string, connectionName: string): Promise<void> {
+    this.connections.delete(this.key(service, connectionName));
+  }
 
   async list(): Promise<StoredConnection[]> {
-    return [];
+    return [...this.connections.values()];
+  }
+
+  private key(service: string, connectionName: string): string {
+    return `${service}:${connectionName}`;
   }
 }
 
