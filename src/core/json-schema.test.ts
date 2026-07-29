@@ -26,3 +26,62 @@ describe("jsonSchema.looseObject", () => {
     });
   });
 });
+
+describe("jsonSchema.nonEmptyString", () => {
+  it("preserves additional string constraints", () => {
+    expect(
+      jsonSchema.nonEmptyString("A constrained identifier.", {
+        maxLength: 16,
+        pattern: "^[a-z]+$",
+      }),
+    ).toEqual({
+      type: "string",
+      minLength: 1,
+      maxLength: 16,
+      pattern: "^[a-z]+$",
+      description: "A constrained identifier.",
+    });
+  });
+});
+
+describe("jsonSchema.nonWhitespaceString", () => {
+  it("rejects empty and whitespace-only strings", () => {
+    expect(jsonSchema.nonWhitespaceString("A meaningful value.", { maxLength: 64 })).toEqual({
+      type: "string",
+      minLength: 1,
+      maxLength: 64,
+      pattern: "\\S",
+      description: "A meaningful value.",
+    });
+  });
+});
+
+describe("jsonSchema.looseRequiredObject", () => {
+  it("requires every property except explicitly optional properties", () => {
+    expect(
+      jsonSchema.looseRequiredObject(
+        "A provider resource.",
+        {
+          id: jsonSchema.string("The resource identifier."),
+          label: jsonSchema.string("The optional label."),
+        },
+        { optional: ["label"] },
+      ),
+    ).toEqual({
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The resource identifier." },
+        label: { type: "string", description: "The optional label." },
+      },
+      required: ["id"],
+      additionalProperties: true,
+      description: "A provider resource.",
+    });
+
+    expect(
+      jsonSchema.looseRequiredObject("A fully required resource.", {
+        id: jsonSchema.string("The resource identifier."),
+      }),
+    ).toMatchObject({ required: ["id"] });
+  });
+});

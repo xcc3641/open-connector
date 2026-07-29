@@ -2,7 +2,7 @@
 
 <img src="../assets/openconnector-readme-banner.png" alt="OpenConnector - Connect Once. Use Everywhere." width="100%" />
 
-[English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
+[English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md) | [Français](README.fr.md)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../LICENSE.txt)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933)
@@ -17,6 +17,11 @@
 
 OpenConnector 是一套供 AI Agent 使用的開放原始碼連接器閘道，也是 Composio 的替代方案。
 只要連線一次使用者的應用程式帳號，就能向 Agent 與應用程式提供共用目錄，其中包含 1,000 多個服務提供者及 10,000 多個預先建置的 Action。
+
+> [!IMPORTANT]
+> **希望 OAuth 開箱即用？** [OOMOL 官方代管 Connector](https://oomol.com/apps) 已為支援的服務提供者
+> 設定好 OAuth 應用程式，使用者可直接授權；每月贈送的 Connect 點數約可支援 15,000–20,000 次免費呼叫，
+> 實際次數取決於用量。自行代管的 OpenConnector 同樣支援 OAuth，但需要自行申請並設定 OAuth 應用程式。
 
 在應用程式程式碼中使用 [Connector SDK](https://github.com/oomol-lab/connector-sdk)，以
 [oo CLI](https://github.com/oomol-lab/oo-cli) 作為本機 Agent 的轉接工具；Agent 主機可使用 MCP，
@@ -110,6 +115,11 @@ flowchart LR
 
 ## 快速開始
 
+> [!NOTE]
+> 以下步驟會啟動自行代管的執行階段。使用 OAuth 服務提供者時，你必須提供自行向對應平台申請的
+> OAuth 用戶端憑證。若希望使用者無須設定 OAuth 應用程式即可直接授權支援的服務提供者，請使用
+> [OOMOL 官方代管 Connector](https://oomol.com/apps)。
+
 使用 Docker Compose 從已發布的映像檔啟動執行階段：
 
 ```bash
@@ -184,19 +194,17 @@ OpenConnector 也可部署至 Fly.io，使用 Node Docker 執行階段，並將 
 
 標籤、拉取及執行方式，請參閱 [docker-ghcr.md（英文）](docker-ghcr.md)。
 
-## 想直接使用？
+## 用 Wanta 建構你的桌面 Agent
 
-上述方式適合將連接器整合進自有產品、執行階段或基礎架構的團隊。如果只想先體驗 SaaS 連線，
-或直接用於日常工作，不必先部署 OpenConnector，也不必先整合 SDK、CLI、MCP 或 HTTP API。
+OpenConnector 與 [Wanta](https://github.com/oomol-lab/wanta) 是 OOMOL 開源生態中面向 AI Agent
+的兩個專案。OpenConnector 負責將 Gmail、Slack、Notion 等外部服務接入 Agent；Wanta 則提供一套以 OpenCode
+執行的完整桌面 Agent 應用程式，並透過 OpenConnector 使用已連接的 SaaS 服務。
 
-[Wanta](https://wanta.ai/) 是使用相同 1,000 多項 SaaS/服務提供者涵蓋範圍的桌面產品入口。
-帳號只需連線一次，就能用自然語言在已連線的工具間搜尋、整理、建立及同步內容。
+- **本機執行：** 使用自己的 OpenAI 相容模型，無須註冊 Wanta 帳號。
+- **二次開發：** Fork Wanta，自訂提示詞、工具、介面、模型與品牌，建構自己的桌面 Agent。
+- **託管服務：** 選用的[託管服務](https://wanta.ai/)提供託管模型、OAuth 連線與團隊工作區。
 
-| 如果你想要                    | Wanta 提供                                                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------- |
-| 直接體驗 1,000 多項 SaaS 連線 | 使用相同的 SaaS/服務提供者涵蓋範圍，不必先部署執行階段或整合 SDK/CLI。             |
-| 在日常工作中使用 Agent        | 以自然語言操作電子郵件、聊天、文件、資料、專案、客服、開發者工具及行銷工具。       |
-| 與團隊共用已連線的功能        | 連線與存取範圍只需設定一次；團隊成員無須設定即可使用，而金鑰、權杖及憑證不會外露。 |
+歡迎透過 Issue 和 Pull Request 參與貢獻。
 
 ## 文件
 
@@ -254,3 +262,26 @@ npm test
 
 請確保 Issue 與 Pull Request 主題明確、尊重他人且可採取行動。參與本專案須遵守
 [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)。
+
+## 支持 OpenConnector
+
+如果 OpenConnector 對你有幫助，給個 ⭐ 能幫助更多開發者發現這個專案。
+
+<div align="center">
+
+<img src="../assets/star-open-connector.gif" alt="在 GitHub 上為 OpenConnector 點 Star 的操作示範" width="760" />
+
+</div>
+
+## 貢獻者
+
+感謝每一位參與建設 OpenConnector 的貢獻者。歡迎參閱 [貢獻指南](../CONTRIBUTING.md)，加入我們。
+
+[![OpenConnector 貢獻者](https://contrib.rocks/image?repo=oomol-lab/open-connector)](https://github.com/oomol-lab/open-connector/graphs/contributors)
+
+## Star 歷史
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/star-history/star-history-dark.svg">
+  <img alt="Star 歷史" src="../assets/star-history/star-history-light.svg">
+</picture>

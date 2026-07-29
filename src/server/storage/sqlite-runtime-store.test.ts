@@ -48,6 +48,7 @@ describe("SqliteRuntimeDatabase", () => {
       "0007_runtime_policy.sql",
       "0008_runtime_token_policy.sql",
       "0009_runtime_token_proxy.sql",
+      "0010_connection_revision.sql",
     ];
     expect(entries.filter((entry) => entry.message === "sqlite migration started")).toEqual(
       migrations.map((migration) => ({ fields: { migration }, message: "sqlite migration started" })),
@@ -155,7 +156,7 @@ describe("SqliteRuntimeDatabase", () => {
     second.close();
   });
 
-  it("preserves connection identity on update and replaces it after deletion", async () => {
+  it("preserves connection identity and rejects stale credential revisions", async () => {
     const database = new SqliteRuntimeDatabase(await createDatabasePath());
     const credential = {
       authType: "api_key" as const,
@@ -171,19 +172,36 @@ describe("SqliteRuntimeDatabase", () => {
       apiKey: "updated-token",
     });
     expect(updated.id).toBe(created.id);
+    expect(updated.revision).not.toBe(created.revision);
+    await expect(
+      database.connectionStore.updateCredential({
+        ...created,
+        credential: { ...credential, apiKey: "stale-refreshed-token" },
+      }),
+    ).resolves.toBe(false);
     await expect(
       database.connectionStore.updateCredential({
         ...updated,
         credential: { ...credential, apiKey: "refreshed-token" },
       }),
     ).resolves.toBe(true);
+    await expect(
+      database.connectionStore.updateCredential({
+        ...updated,
+        credential: { ...credential, apiKey: "second-refreshed-token" },
+      }),
+    ).resolves.toBe(false);
+    await expect(database.connectionStore.get("github", "default")).resolves.toMatchObject({
+      id: updated.id,
+      credential: { apiKey: "refreshed-token" },
+    });
 
     await database.connectionStore.delete("github", "default");
     const recreated = await database.connectionStore.set("github", "default", credential);
-    expect(recreated.id).not.toBe(created.id);
+    expect(recreated.id).not.toBe(updated.id);
     await expect(
       database.connectionStore.updateCredential({
-        ...created,
+        ...updated,
         credential: { ...credential, apiKey: "stale-refreshed-token" },
       }),
     ).resolves.toBe(false);
@@ -429,6 +447,7 @@ describe("SqliteRuntimeDatabase", () => {
       "0007_runtime_policy.sql",
       "0008_runtime_token_policy.sql",
       "0009_runtime_token_proxy.sql",
+      "0010_connection_revision.sql",
     ]) {
       raw.exec(readFileSync(new URL(`../../../migrations/${migration}`, import.meta.url), "utf8"));
     }
@@ -533,8 +552,14 @@ describe("SqliteRuntimeDatabase", () => {
     expect(
       inspected.prepare("select name from runtime_migrations where name = ?").get("0009_runtime_token_proxy.sql"),
     ).toBeDefined();
+    expect(
+      inspected.prepare("select name from runtime_migrations where name = ?").get("0010_connection_revision.sql"),
+    ).toBeDefined();
     expect(inspected.prepare("pragma table_info(connections)").all()).toContainEqual(
       expect.objectContaining({ name: "id", notnull: 1 }),
+    );
+    expect(inspected.prepare("pragma table_info(connections)").all()).toContainEqual(
+      expect.objectContaining({ name: "revision", notnull: 1 }),
     );
     expect(
       inspected

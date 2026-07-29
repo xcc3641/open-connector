@@ -190,33 +190,22 @@ class TestProviderLoader implements IProviderLoader {
 }
 
 class MemoryConnectionStore implements IConnectionStore {
-  private connection: StoredConnection = {
-    id: "example:default",
-    service: "example",
-    connectionName: "default",
-    credential: { authType: "no_auth" },
-  };
-
-  async get(service: string, connectionName: string): Promise<StoredConnection | undefined> {
-    return this.connection.service === service && this.connection.connectionName === connectionName
-      ? this.connection
-      : undefined;
+  async get(): Promise<StoredConnection | undefined> {
+    return undefined;
   }
 
   async set(service: string, connectionName: string, credential: ResolvedCredential): Promise<StoredConnection> {
-    this.connection = { id: this.connection.id, service, connectionName, credential };
-    return this.connection;
+    return { id: crypto.randomUUID(), revision: crypto.randomUUID(), service, connectionName, credential };
   }
 
-  async updateCredential(input: StoredConnection): Promise<boolean> {
-    this.connection = input;
-    return true;
+  async updateCredential(): Promise<boolean> {
+    return false;
   }
 
   async delete(): Promise<void> {}
 
   async list(): Promise<StoredConnection[]> {
-    return [this.connection];
+    return [];
   }
 }
 

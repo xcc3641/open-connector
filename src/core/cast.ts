@@ -163,6 +163,14 @@ export function requiredStringArray(
 }
 
 /**
+ * Return an array only when every item is already a string. Invalid or absent
+ * values return undefined.
+ */
+export function optionalStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+}
+
+/**
  * Return every array item as a plain object record, or throw. Examples:
  * `objectArray([{ a: 1 }], "items") => [{ a: 1 }]`, `objectArray([1], "items")` throws.
  */

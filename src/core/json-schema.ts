@@ -77,7 +77,7 @@ export const jsonSchema = {
     options: { optional?: readonly string[] } = {},
   ): JsonSchema {
     return this.object(description, properties, {
-      optional: options.optional,
+      optional: options.optional ?? [],
       additionalProperties: true,
     });
   },
@@ -115,8 +115,15 @@ export const jsonSchema = {
     return schema;
   },
 
-  nonEmptyString(description: string, options: Omit<JsonSchemaOptions, "description"> = {}): JsonSchema {
+  nonEmptyString(description: string, options: Omit<StringOptions, "description" | "minLength"> = {}): JsonSchema {
     return this.string({ ...options, minLength: 1, description });
+  },
+
+  nonWhitespaceString(
+    description: string,
+    options: Omit<StringOptions, "description" | "minLength" | "pattern"> = {},
+  ): JsonSchema {
+    return this.string({ ...options, minLength: 1, pattern: "\\S", description });
   },
 
   unknown(description: string): JsonSchema {

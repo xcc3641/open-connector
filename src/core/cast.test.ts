@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { base64Bytes, positiveInteger, requiredStringArray } from "./cast.ts";
+import { base64Bytes, optionalStringArray, positiveInteger, requiredStringArray } from "./cast.ts";
 
 describe("cast helpers", () => {
   it("decodes strict base64 bytes", () => {
@@ -25,5 +25,14 @@ describe("cast helpers", () => {
 
   it("rejects non-string array items", () => {
     expect(() => requiredStringArray(["one", 2], "values")).toThrow("values must be an array of strings");
+  });
+
+  it("optionally reads arrays containing only strings", () => {
+    const values = ["one", "two"];
+
+    expect(optionalStringArray(values)).toBe(values);
+    expect(optionalStringArray([])).toEqual([]);
+    expect(optionalStringArray(["one", 2])).toBeUndefined();
+    expect(optionalStringArray(undefined)).toBeUndefined();
   });
 });

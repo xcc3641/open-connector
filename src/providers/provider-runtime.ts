@@ -88,6 +88,8 @@ export interface ProviderExecutorDefinition<TContext> {
   handlers: Record<string, ProviderRuntimeHandler<TContext>>;
   createContext: ProviderRuntimeContextFactory<TContext>;
   fallbackMessage?: string;
+  /** Override the standard execution-error mapping when the provider exposes stable native error codes. */
+  mapError?: (error: unknown) => ExecutionResult;
   /** Deployment-gated private-network opt-in applied to this provider's egress fetch (currently Dokploy). */
   allowPrivateNetwork?: () => boolean;
   /** Skip the redundant DNS resolved-address check; only for hardcoded-host providers. */
@@ -785,7 +787,7 @@ export function defineProviderExecutors<TContext>(input: ProviderExecutorDefinit
           ),
         };
       } catch (error) {
-        return toProviderExecutionError(error, fallbackMessage);
+        return input.mapError?.(error) ?? toProviderExecutionError(error, fallbackMessage);
       }
     };
   }

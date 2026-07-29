@@ -62,7 +62,7 @@ describe("D1RuntimeDatabase", () => {
     await expect(database.oauthClientConfigStore.get("gmail")).resolves.toBeUndefined();
   });
 
-  it("preserves connection identity on update and replaces it after deletion", async () => {
+  it("preserves connection identity and rejects stale credential revisions", async () => {
     const database = new D1RuntimeDatabase(new SqliteD1Database());
     const credential = {
       authType: "api_key" as const,
@@ -78,19 +78,36 @@ describe("D1RuntimeDatabase", () => {
       apiKey: "updated-token",
     });
     expect(updated.id).toBe(created.id);
+    expect(updated.revision).not.toBe(created.revision);
+    await expect(
+      database.connectionStore.updateCredential({
+        ...created,
+        credential: { ...credential, apiKey: "stale-refreshed-token" },
+      }),
+    ).resolves.toBe(false);
     await expect(
       database.connectionStore.updateCredential({
         ...updated,
         credential: { ...credential, apiKey: "refreshed-token" },
       }),
     ).resolves.toBe(true);
+    await expect(
+      database.connectionStore.updateCredential({
+        ...updated,
+        credential: { ...credential, apiKey: "second-refreshed-token" },
+      }),
+    ).resolves.toBe(false);
+    await expect(database.connectionStore.get("github", "default")).resolves.toMatchObject({
+      id: updated.id,
+      credential: { apiKey: "refreshed-token" },
+    });
 
     await database.connectionStore.delete("github", "default");
     const recreated = await database.connectionStore.set("github", "default", credential);
-    expect(recreated.id).not.toBe(created.id);
+    expect(recreated.id).not.toBe(updated.id);
     await expect(
       database.connectionStore.updateCredential({
-        ...created,
+        ...updated,
         credential: { ...credential, apiKey: "stale-refreshed-token" },
       }),
     ).resolves.toBe(false);
@@ -451,6 +468,9 @@ class SqliteD1Database implements D1DatabaseBinding {
     );
     this.database.exec(
       readFileSync(new URL("../../../migrations/0009_runtime_token_proxy.sql", import.meta.url), "utf8"),
+    );
+    this.database.exec(
+      readFileSync(new URL("../../../migrations/0010_connection_revision.sql", import.meta.url), "utf8"),
     );
   }
 

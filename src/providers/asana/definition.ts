@@ -1,6 +1,13 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
-import { asanaActions } from "./actions.ts";
+import { asanaAttachmentActions } from "./actions-attachments.ts";
+import { asanaCustomFieldActions } from "./actions-custom-fields.ts";
+import { asanaProjectSectionActions } from "./actions-projects.ts";
+import { asanaStoryTagActions } from "./actions-stories-tags.ts";
+import { asanaTaskActions } from "./actions-tasks.ts";
+import { asanaTeamActions } from "./actions-teams.ts";
+import { asanaUserActions } from "./actions-users.ts";
+import { asanaWorkspaceActions } from "./actions-workspaces.ts";
 
 const service = "asana";
 
@@ -20,5 +27,14 @@ export const provider: ProviderDefinition = {
     },
   ],
   homepageUrl: "https://asana.com",
-  actions: asanaActions,
+  actions: [
+    ...asanaWorkspaceActions,
+    ...asanaUserActions,
+    ...asanaTeamActions,
+    ...asanaProjectSectionActions,
+    ...asanaTaskActions,
+    ...asanaStoryTagActions,
+    ...asanaCustomFieldActions,
+    ...asanaAttachmentActions,
+  ],
 };
