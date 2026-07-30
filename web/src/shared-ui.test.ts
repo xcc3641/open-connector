@@ -16,6 +16,15 @@ function provider(options: { service: string; displayName: string; homepageUrl?:
 }
 
 describe("resolveProviderIconClass", () => {
+  it("uses official brand icon classes for AI-Image providers", () => {
+    expect(resolveProviderIconClass(provider({ service: "ai_image_gpt", displayName: "AI-Image GPT" }))).toBe(
+      "i-logos-openai-icon",
+    );
+    expect(resolveProviderIconClass(provider({ service: "ai_image_grok", displayName: "AI-Image Grok" }))).toBe(
+      "i-logos-grok-icon",
+    );
+  });
+
   it("uses product-specific logo classes for mapped Google providers", () => {
     const mappedProviders = [
       {

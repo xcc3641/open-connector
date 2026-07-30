@@ -106,6 +106,11 @@ interface ProviderIconSource {
 
 const defaultGoogleProviderIconClass = "i-logos-google-icon";
 
+const brandedProviderIconClasses: Record<string, string> = {
+  ai_image_gpt: "i-logos-openai-icon",
+  ai_image_grok: "i-logos-grok-icon",
+};
+
 const googleProviderIconClasses: Record<string, string> = {
   google_analytics: "i-logos-google-analytics",
   gmail: "i-logos-google-gmail",
@@ -142,6 +147,11 @@ export function providerIconSource(provider: ProviderDefinition): ProviderIconSo
 }
 
 export function resolveProviderIconClass(provider: ProviderDefinition): string | undefined {
+  const brandedIconClass = brandedProviderIconClasses[provider.service];
+  if (brandedIconClass) {
+    return brandedIconClass;
+  }
+
   const iconClass = googleProviderIconClasses[provider.service];
   if (iconClass) {
     return iconClass;
