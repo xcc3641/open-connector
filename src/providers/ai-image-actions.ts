@@ -37,8 +37,11 @@ const generateImageOutputSchema = s.object(
   { required: ["model", "images"], optional: ["created", "usage"] },
 );
 
+const gptImageModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"] as const;
+const grokImageModels = ["grok-imagine-image-quality", "grok-imagine-image", "grok-imagine"] as const;
+
 export function createAiImageActions(service: string, backend: AiImageBackend): ActionDefinition[] {
-  return [
+  const actions: ActionDefinition[] = [
     defineProviderAction(service, {
       name: "list_models",
       description: `List ${backend === "gpt" ? "GPT" : "Grok"} image models available through this AI-Image connection.`,
@@ -52,20 +55,41 @@ export function createAiImageActions(service: string, backend: AiImageBackend): 
       outputSchema: generateImageOutputSchema,
     }),
   ];
+
+  if (backend === "gpt") {
+    actions.push(
+      defineProviderAction(service, {
+        name: "edit_image",
+        description:
+          "Edit an existing image with GPT Image through OpenAI images/edits. Provide one source image (and optional mask) as local transit files, plus a prompt describing the edit. Defaults to the best available model (gpt-image-2).",
+        inputSchema: editImageInputSchema(),
+        outputSchema: generateImageOutputSchema,
+        followUpActions: [`${service}.generate_image`, `${service}.generate_with_reference`],
+      }),
+      defineProviderAction(service, {
+        name: "generate_with_reference",
+        description:
+          "Generate a new image guided by one or more reference images via OpenAI images/edits. Prefer this over plain generate_image when the user supplies style/subject references. Defaults to the best available model (gpt-image-2).",
+        inputSchema: generateWithReferenceInputSchema(),
+        outputSchema: generateImageOutputSchema,
+        followUpActions: [`${service}.edit_image`, `${service}.generate_image`],
+      }),
+    );
+  }
+
+  return actions;
 }
 
 function generateImageInputSchema(backend: AiImageBackend): JsonSchema {
   const shared = {
     prompt: s.nonEmptyString("A detailed description of the image to generate."),
-    model: s.stringEnum(
-      backend === "gpt"
-        ? ["gpt-image-1", "gpt-image-1.5", "gpt-image-2"]
-        : ["grok-imagine", "grok-imagine-image", "grok-imagine-image-quality"],
-      {
-        default: backend === "gpt" ? "gpt-image-2" : "grok-imagine-image-quality",
-        description: "The image model to use. It must be available to the configured Sub2API key.",
-      },
-    ),
+    model: s.stringEnum(backend === "gpt" ? [...gptImageModels] : [...grokImageModels], {
+      default: backend === "gpt" ? "gpt-image-2" : "grok-imagine-image-quality",
+      description:
+        backend === "gpt"
+          ? "The GPT image model to use. Prefer gpt-image-2 (best). Only override when the connection lacks that model."
+          : "The Grok image model to use. Prefer grok-imagine-image-quality (best).",
+    }),
     n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of images to generate." }),
     size: s.nonEmptyString("The requested image size, such as 1024x1024."),
   };
@@ -81,26 +105,110 @@ function generateImageInputSchema(backend: AiImageBackend): JsonSchema {
     "Input for GPT image generation.",
     {
       ...shared,
-      quality: s.stringEnum(["auto", "low", "medium", "high"], {
-        description: "The requested GPT image quality.",
-      }),
-      background: s.stringEnum(["auto", "opaque", "transparent"], {
-        description: "The requested GPT image background treatment.",
-      }),
-      outputFormat: s.stringEnum(["png", "jpeg", "webp"], {
-        default: "png",
-        description: "The generated image format.",
-      }),
-      outputCompression: s.integer({
-        minimum: 0,
-        maximum: 100,
-        description: "Compression level for JPEG or WebP output.",
-      }),
-      moderation: s.nonEmptyString("The GPT image moderation setting."),
+      ...gptImageOptionFields(),
     },
     {
       required: ["prompt"],
       optional: ["model", "n", "size", "quality", "background", "outputFormat", "outputCompression", "moderation"],
     },
   );
+}
+
+function editImageInputSchema(): JsonSchema {
+  return s.object(
+    "Input for GPT image editing via images/edits.",
+    {
+      prompt: s.nonEmptyString("Describe how to edit the source image."),
+      image: s.transitFile("The source image previously uploaded to local transit storage."),
+      mask: s.transitFile(
+        "Optional PNG mask transit file. Transparent areas mark regions to edit; opaque areas are preserved.",
+      ),
+      model: s.stringEnum([...gptImageModels], {
+        default: "gpt-image-2",
+        description: "The GPT image model to use. Prefer gpt-image-2 (best).",
+      }),
+      n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of edited images to generate." }),
+      size: s.nonEmptyString("The requested image size, such as 1024x1024."),
+      ...gptImageOptionFields(),
+      inputFidelity: s.stringEnum(["low", "high"], {
+        description: "How strongly the model should preserve details from the input image(s).",
+      }),
+    },
+    {
+      required: ["prompt", "image"],
+      optional: [
+        "mask",
+        "model",
+        "n",
+        "size",
+        "quality",
+        "background",
+        "outputFormat",
+        "outputCompression",
+        "moderation",
+        "inputFidelity",
+      ],
+    },
+  );
+}
+
+function generateWithReferenceInputSchema(): JsonSchema {
+  return s.object(
+    "Input for GPT image generation guided by reference images via images/edits.",
+    {
+      prompt: s.nonEmptyString(
+        "Describe the image to generate. Reference images guide style, subject, or composition — they are not a strict pixel edit unless the prompt says so.",
+      ),
+      referenceImages: s.array(
+        "One or more reference images from local transit storage (OpenAI images/edits image[]).",
+        s.transitFile("A reference image previously uploaded to local transit storage."),
+        { minItems: 1, maxItems: 8 },
+      ),
+      model: s.stringEnum([...gptImageModels], {
+        default: "gpt-image-2",
+        description: "The GPT image model to use. Prefer gpt-image-2 (best).",
+      }),
+      n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of images to generate." }),
+      size: s.nonEmptyString("The requested image size, such as 1024x1024."),
+      ...gptImageOptionFields(),
+      inputFidelity: s.stringEnum(["low", "high"], {
+        description: "How strongly the model should preserve details from the reference image(s).",
+      }),
+    },
+    {
+      required: ["prompt", "referenceImages"],
+      optional: [
+        "model",
+        "n",
+        "size",
+        "quality",
+        "background",
+        "outputFormat",
+        "outputCompression",
+        "moderation",
+        "inputFidelity",
+      ],
+    },
+  );
+}
+
+function gptImageOptionFields(): Record<string, JsonSchema> {
+  return {
+    quality: s.stringEnum(["auto", "low", "medium", "high"], {
+      description: "The requested GPT image quality.",
+    }),
+    background: s.stringEnum(["auto", "opaque", "transparent"], {
+      description: "The requested GPT image background treatment.",
+    }),
+    outputFormat: s.stringEnum(["png", "jpeg", "webp"], {
+      default: "png",
+      description: "The generated image format.",
+    }),
+    outputCompression: s.integer({
+      minimum: 0,
+      maximum: 100,
+      description: "Compression level for JPEG or WebP output.",
+    }),
+    moderation: s.nonEmptyString("The GPT image moderation setting."),
+  };
 }

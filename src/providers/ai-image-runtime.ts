@@ -18,6 +18,7 @@ import {
   providerFetch,
   providerUserAgent,
   readProviderTextBody,
+  readTransitFileInput,
   requireApiKeyCredential,
 } from "./provider-runtime.ts";
 
@@ -67,7 +68,7 @@ interface GeneratedImageSource {
 export function createAiImageActionHandlers(
   backend: AiImageBackend,
 ): Record<string, (input: Record<string, unknown>, context: AiImageContext) => Promise<unknown>> {
-  return {
+  const handlers: Record<string, (input: Record<string, unknown>, context: AiImageContext) => Promise<unknown>> = {
     list_models(_input, context) {
       assertContextBackend(context, backend);
       return listAiImageModels(context);
@@ -77,6 +78,19 @@ export function createAiImageActionHandlers(
       return generateAiImages(input, context);
     },
   };
+
+  if (backend === "gpt") {
+    handlers.edit_image = (input, context) => {
+      assertContextBackend(context, backend);
+      return editAiImages(input, context, "edit");
+    };
+    handlers.generate_with_reference = (input, context) => {
+      assertContextBackend(context, backend);
+      return editAiImages(input, context, "reference");
+    };
+  }
+
+  return handlers;
 }
 
 export async function createAiImageContext(input: AiImageContextInput): Promise<AiImageContext> {
@@ -225,6 +239,142 @@ async function generateAiImages(
     images,
     usage: optionalRecord(record.usage),
   });
+}
+
+async function editAiImages(
+  input: Record<string, unknown>,
+  context: AiImageContext,
+  mode: "edit" | "reference",
+): Promise<Record<string, unknown>> {
+  if (context.backend !== "gpt") {
+    throw new ProviderRequestError(400, "Image editing requires the GPT AI-Image backend.");
+  }
+  if (!context.transitFiles) {
+    throw new ProviderRequestError(400, "AI-Image editing requires local transit file storage.");
+  }
+
+  const model = optionalString(input.model) ?? defaultModels.gpt;
+  assertModelMatchesBackend(model, "gpt");
+  const outputFormat = optionalString(input.outputFormat) ?? "png";
+  const prompt = requiredString(input.prompt, "prompt", providerInputError);
+  const sourceImages = await resolveEditSourceImages(input, context, mode);
+  const maskFile = mode === "edit" && input.mask !== undefined
+    ? await readTransitFileInput(input.mask, { transitFiles: context.transitFiles })
+    : undefined;
+
+  const formData = new FormData();
+  formData.set("model", model);
+  formData.set("prompt", prompt);
+  formData.set("n", String(optionalInteger(input.n) ?? 1));
+  formData.set("response_format", "b64_json");
+  // OpenAI images/edits accepts repeated image fields; use image[] for multi-reference.
+  for (const source of sourceImages) {
+    const fieldName = sourceImages.length > 1 || mode === "reference" ? "image[]" : "image";
+    formData.append(fieldName, source.file, source.name);
+  }
+  if (maskFile) {
+    formData.set("mask", maskFile.file, maskFile.name);
+  }
+
+  const size = optionalString(input.size);
+  if (size) formData.set("size", size);
+  const quality = optionalString(input.quality);
+  if (quality) formData.set("quality", quality);
+  const background = optionalString(input.background);
+  if (background) formData.set("background", background);
+  if (outputFormat) formData.set("output_format", outputFormat);
+  const outputCompression = optionalInteger(input.outputCompression);
+  if (outputCompression !== undefined) formData.set("output_compression", String(outputCompression));
+  const moderation = optionalString(input.moderation);
+  if (moderation) formData.set("moderation", moderation);
+  const inputFidelity = optionalString(input.inputFidelity);
+  if (inputFidelity) formData.set("input_fidelity", inputFidelity);
+
+  const response = await context.fetcher(`${context.baseUrl}/images/edits`, {
+    method: "POST",
+    headers: aiImageMultipartHeaders(context.apiKey),
+    body: formData,
+    signal: context.signal,
+  });
+  const payload = await readAiImageJson(response, "execute", context.transitFiles.maxBytes);
+  const record = requireResponseRecord(payload, "image edit response");
+  const items = optionalObjectArray(record.data, "image item", invalidResponseError);
+  if (items.length === 0) {
+    throw new ProviderRequestError(502, "Sub2API image edit response did not include generated images.", payload);
+  }
+
+  const images = await Promise.all(
+    items.map(async (item, index) => {
+      const source = await resolveGeneratedImage(item, outputFormat, context.transitFiles!.maxBytes, context.signal);
+      const extension = extensionForMimeType(source.mimeType);
+      const prefix = mode === "edit" ? "ai-image-gpt-edit" : "ai-image-gpt-ref";
+      const fileName = `${prefix}-${Date.now()}-${String(index + 1).padStart(2, "0")}.${extension}`;
+      const stored = await context.transitFiles!.create(
+        new File([Uint8Array.from(source.bytes)], fileName, { type: source.mimeType }),
+      );
+      const file: ProviderTransitFile = {
+        fileId: stored.fileId,
+        downloadUrl: stored.downloadUrl,
+        sizeBytes: stored.sizeBytes,
+        name: stored.name,
+        mimeType: stored.mimeType,
+      };
+      return compactObject({ file, revisedPrompt: source.revisedPrompt });
+    }),
+  );
+
+  return compactObject({
+    model: optionalString(record.model) ?? model,
+    created: optionalInteger(record.created),
+    images,
+    usage: optionalRecord(record.usage),
+  });
+}
+
+async function resolveEditSourceImages(
+  input: Record<string, unknown>,
+  context: AiImageContext,
+  mode: "edit" | "reference",
+): Promise<Array<{ file: File; name: string }>> {
+  if (!context.transitFiles) {
+    throw new ProviderRequestError(400, "AI-Image editing requires local transit file storage.");
+  }
+
+  if (mode === "edit") {
+    const image = await readTransitFileInput(input.image, { transitFiles: context.transitFiles });
+    assertInputImageMimeType(image.mimeType, "image");
+    return [{ file: image.file, name: image.name }];
+  }
+
+  if (!Array.isArray(input.referenceImages) || input.referenceImages.length === 0) {
+    throw providerInputError("referenceImages must include at least one transit file");
+  }
+  if (input.referenceImages.length > 8) {
+    throw providerInputError("referenceImages supports at most 8 images");
+  }
+
+  const images: Array<{ file: File; name: string }> = [];
+  for (const [index, item] of input.referenceImages.entries()) {
+    const image = await readTransitFileInput(item, { transitFiles: context.transitFiles });
+    assertInputImageMimeType(image.mimeType, `referenceImages[${index}]`);
+    images.push({ file: image.file, name: image.name });
+  }
+  return images;
+}
+
+function assertInputImageMimeType(mimeType: string, fieldName: string): void {
+  const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!normalized.startsWith("image/")) {
+    throw providerInputError(`${fieldName} must be an image transit file`);
+  }
+}
+
+function aiImageMultipartHeaders(apiKey: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${apiKey}`,
+    accept: "application/json",
+    "user-agent": providerUserAgent,
+  };
 }
 
 async function resolveGeneratedImage(

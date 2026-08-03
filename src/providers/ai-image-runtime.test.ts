@@ -181,22 +181,126 @@ describe("AI-Image provider runtime", () => {
       stream: false,
     });
   });
+
+  it("edits an image through images/edits with the best default GPT model", async () => {
+    const source = new File([pngBytes], "source.png", { type: "image/png" });
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), init });
+      return Response.json({
+        created: 1_780_000_001,
+        data: [{ b64_json: Buffer.from(pngBytes).toString("base64") }],
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await createAiImageActionHandlers("gpt").edit_image!(
+      {
+        prompt: "make the cat wear a scarf",
+        image: { fileId: "src-1" },
+        quality: "high",
+      },
+      {
+        apiKey: "sk-test",
+        backend: "gpt",
+        baseUrl: "http://sub2api.test/v1",
+        fetcher,
+        transitFiles: createTransitStore({ "src-1": source }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      model: "gpt-image-2",
+      images: [
+        {
+          file: {
+            name: expect.stringMatching(/^ai-image-gpt-edit-\d+-01\.png$/u),
+            mimeType: "image/png",
+          },
+        },
+      ],
+    });
+    expect(requests[0]?.url).toBe("http://sub2api.test/v1/images/edits");
+    expect(new Headers(requests[0]?.init?.headers).get("content-type")).toBeNull();
+    expect(new Headers(requests[0]?.init?.headers).get("authorization")).toBe("Bearer sk-test");
+    expect(requests[0]?.init?.body).toBeInstanceOf(FormData);
+    const body = requests[0]?.init?.body as FormData;
+    expect(body.get("model")).toBe("gpt-image-2");
+    expect(body.get("prompt")).toBe("make the cat wear a scarf");
+    expect(body.get("response_format")).toBe("b64_json");
+    expect(body.get("quality")).toBe("high");
+    expect(body.get("image")).toBeInstanceOf(File);
+  });
+
+  it("generates with multiple reference images through images/edits", async () => {
+    const refA = new File([pngBytes], "ref-a.png", { type: "image/png" });
+    const refB = new File([pngBytes], "ref-b.png", { type: "image/png" });
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), init });
+      return Response.json({
+        data: [{ b64_json: Buffer.from(pngBytes).toString("base64") }],
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await createAiImageActionHandlers("gpt").generate_with_reference!(
+      {
+        prompt: "same character, rainy street",
+        referenceImages: [{ fileId: "a" }, { fileId: "b" }],
+        inputFidelity: "high",
+      },
+      {
+        apiKey: "sk-test",
+        backend: "gpt",
+        baseUrl: "http://sub2api.test/v1",
+        fetcher,
+        transitFiles: createTransitStore({ a: refA, b: refB }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      model: "gpt-image-2",
+      images: [{ file: { name: expect.stringMatching(/^ai-image-gpt-ref-\d+-01\.png$/u) } }],
+    });
+    const body = requests[0]?.init?.body as FormData;
+    expect(requests[0]?.url).toBe("http://sub2api.test/v1/images/edits");
+    expect(body.getAll("image[]")).toHaveLength(2);
+    expect(body.get("input_fidelity")).toBe("high");
+    expect(body.get("model")).toBe("gpt-image-2");
+  });
+
+  it("does not expose edit actions on the Grok backend handlers", () => {
+    const handlers = createAiImageActionHandlers("grok");
+    expect(handlers.edit_image).toBeUndefined();
+    expect(handlers.generate_with_reference).toBeUndefined();
+  });
 });
 
-function createTransitStore(): TransitFileStore {
+function createTransitStore(files: Record<string, File> = {}): TransitFileStore {
+  let created = 0;
   return {
     maxBytes: 1024,
     async create(file) {
+      created += 1;
       return {
-        fileId: "generated-1",
-        downloadUrl: "/v1/files/generated-1",
+        fileId: `generated-${created}`,
+        downloadUrl: `/v1/files/generated-${created}`,
         sizeBytes: file.size,
         name: file.name,
         mimeType: file.type,
       };
     },
-    async read() {
-      throw new Error("not implemented");
+    async read(fileId) {
+      const file = files[fileId];
+      if (!file) {
+        throw new Error(`missing transit file ${fileId}`);
+      }
+      return {
+        fileId,
+        file,
+        name: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      };
     },
     async delete() {
       return false;
