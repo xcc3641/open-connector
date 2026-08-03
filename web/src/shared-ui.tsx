@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { CircleAlert, Inbox } from "lucide-react";
 import { useState } from "react";
+import providerIconUrls from "virtual:oomol-provider-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -123,10 +124,18 @@ const googleProviderIconClasses: Record<string, string> = {
   google_routes: "i-logos-google-maps",
 };
 
-export function providerIconSource(provider: ProviderDefinition): ProviderIconSource | undefined {
+export function providerIconSource(
+  provider: ProviderDefinition,
+  catalogIconUrls: Readonly<Record<string, string>> = providerIconUrls,
+): ProviderIconSource | undefined {
   const iconUrl = provider.iconUrl?.trim();
   if (iconUrl) {
     return { kind: "url", value: iconUrl };
+  }
+
+  const catalogIconUrl = catalogIconUrls[provider.service]?.trim();
+  if (catalogIconUrl) {
+    return { kind: "url", value: catalogIconUrl };
   }
 
   const resolvedIconClass = resolveProviderIconClass(provider);

@@ -1,6 +1,6 @@
 .provider-browser-panel {
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -142,6 +142,25 @@
   grid-column: 1 / -1;
   justify-content: center;
   padding: 12px;
+}
+
+.provider-brand-notice {
+  position: sticky;
+  z-index: 2;
+  top: 56px;
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 94%, var(--muted));
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 960px) {
+  .provider-brand-notice {
+    position: static;
+  }
 }
 
 .provider-empty-row {

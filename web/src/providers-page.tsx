@@ -226,6 +226,8 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
         onSelect={setStatusFilter}
       />
 
+      <p className="provider-brand-notice">{t("providers.brandNotice")}</p>
+
       {visibleProviders.length === 0 ? (
         <div className="provider-empty-row">
           <EmptyState title={t("providers.noProvidersTitle")} description={t("providers.noProvidersDescription")} />

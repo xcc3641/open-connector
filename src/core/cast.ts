@@ -46,6 +46,22 @@ export function optionalRawString(value: unknown): string | undefined {
 }
 
 /**
+ * Return a string exactly as provided, including empty strings and surrounding whitespace, or throw.
+ */
+export function requiredRawString(
+  value: unknown,
+  fieldName: string,
+  createError: CastErrorFactory = (message) => new CastError(message),
+): string {
+  const result = optionalRawString(value);
+  if (result !== undefined) {
+    return result;
+  }
+
+  throw createError(`${fieldName} must be a string`);
+}
+
+/**
  * Return a string or throw a caller-provided error. Examples:
  * `requiredString(" x ", "name") => "x"`, `requiredString("", "name")` throws.
  */
@@ -276,6 +292,22 @@ export function nullableInteger(value: unknown): number | null | undefined {
  */
 export function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+/**
+ * Return a boolean or throw a caller-provided error.
+ */
+export function requiredBoolean(
+  value: unknown,
+  fieldName: string,
+  createError: CastErrorFactory = (message) => new CastError(message),
+): boolean {
+  const result = optionalBoolean(value);
+  if (result !== undefined) {
+    return result;
+  }
+
+  throw createError(`${fieldName} must be a boolean`);
 }
 
 /**
