@@ -1,21 +1,56 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
 import { mixpanelActions } from "./actions.ts";
+import { mixpanelMcpOAuthScopes } from "./scopes.ts";
 
 const service = "mixpanel";
 
+/**
+ * Mixpanel provider.
+ *
+ * - oauth2: Free-plan-friendly path through Mixpanel's hosted MCP server
+ *   (user browser login + PKCE public client). Preferred for agent access
+ *   when Query API is not on the plan.
+ * - api_key: Service-account Basic auth against Mixpanel Query/Export REST
+ *   APIs (Growth/Enterprise Query API access).
+ */
 export const provider: ProviderDefinition = {
   service,
   displayName: "Mixpanel",
+  description:
+    "Query Mixpanel analytics through the hosted MCP OAuth path (Free-friendly) or the service-account Query/Export REST APIs (paid Query API).",
   categories: ["Data", "Marketing"],
-  authTypes: ["api_key"],
+  authTypes: ["oauth2", "api_key"],
   auth: [
+    {
+      type: "oauth2",
+      authorizationUrl: "https://mixpanel.com/oauth/authorize",
+      tokenUrl: "https://mixpanel.com/oauth/token/",
+      refreshTokenUrl: "https://mixpanel.com/oauth/token/",
+      scopes: [...mixpanelMcpOAuthScopes],
+      tokenEndpointAuthMethod: "none",
+      tokenRequestFormat: "form",
+      pkce: {
+        method: "S256",
+      },
+      tokenRequestFields: {
+        clientSecret: false,
+      },
+      authorizationParams: {
+        // RFC 8707 resource indicator for the US Mixpanel MCP server.
+        resource: "https://mcp.mixpanel.com/mcp",
+      },
+      tokenParams: {
+        // Same resource must be bound on code exchange and refresh (RFC 8707).
+        resource: "https://mcp.mixpanel.com/mcp",
+      },
+    },
     {
       type: "api_key",
       label: "Service Account Secret",
       placeholder: "mixpanel_service_account_secret",
       description:
-        "Mixpanel service account secret used with HTTP Basic authentication for project-scoped query APIs. Create it from Mixpanel Service Accounts: https://developer.mixpanel.com/reference/service-accounts-api.",
+        "Mixpanel service account secret used with HTTP Basic authentication for project-scoped query APIs. Create it from Mixpanel Service Accounts: https://developer.mixpanel.com/reference/service-accounts-api. Query API access requires a paid Mixpanel plan (Growth/Enterprise).",
       extraFields: [
         {
           key: "serviceAccountUsername",

@@ -39,6 +39,7 @@ export class OAuthCredentialRefreshService implements IOAuthCredentialRefresher 
       tokenEndpointAuthMethod: auth.tokenEndpointAuthMethod,
       tokenRequestFormat: auth.tokenRequestFormat,
       tokenUrl: this.clientConfigs.resolveEndpointUrl(service, auth.refreshTokenUrl ?? auth.tokenUrl, config),
+      extraFields: auth.tokenParams,
       createError: (message) => new ConnectionError("oauth_token_refresh_failed", message),
     });
 

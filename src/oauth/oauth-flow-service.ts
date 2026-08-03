@@ -139,7 +139,7 @@ export class OAuthFlowService {
       tokenEndpointAuthMethod: auth.tokenEndpointAuthMethod,
       tokenRequestFormat: auth.tokenRequestFormat,
       tokenUrl: this.clientConfigs.resolveEndpointUrl(pending.service, auth.tokenUrl, config),
-      extraFields: createTokenExtraFields(pending),
+      extraFields: createTokenExtraFields(pending, auth.tokenParams),
       createError: (message) => new OAuthFlowError("oauth_token_exchange_failed", message),
     });
     const oauthCredential = {
@@ -171,14 +171,15 @@ function setAuthorizationParam(
   }
 }
 
-function createTokenExtraFields(state: OAuthAuthorizationState): Record<string, string> | undefined {
-  if (!state.pkceCodeVerifier) {
-    return undefined;
+function createTokenExtraFields(
+  state: OAuthAuthorizationState,
+  tokenParams?: Record<string, string>,
+): Record<string, string> | undefined {
+  const fields: Record<string, string> = { ...(tokenParams ?? {}) };
+  if (state.pkceCodeVerifier) {
+    fields.code_verifier = state.pkceCodeVerifier;
   }
-
-  return {
-    code_verifier: state.pkceCodeVerifier,
-  };
+  return Object.keys(fields).length > 0 ? fields : undefined;
 }
 
 function isExpiredOAuthState(state: OAuthAuthorizationState, maxAgeMs: number): boolean {

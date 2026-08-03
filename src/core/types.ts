@@ -135,6 +135,11 @@ export type OAuth2AuthDefinition = {
   };
   /** Extra static authorization URL parameters, such as Google `access_type=offline`. */
   authorizationParams?: Record<string, string>;
+  /**
+   * Extra static token-request body fields applied to authorization-code exchange
+   * and refresh-token requests (for example RFC 8707 `resource`).
+   */
+  tokenParams?: Record<string, string>;
   /** Provider-specific OAuth authorization request field names. */
   authorizationRequestFields?: {
     clientId?: string | false;

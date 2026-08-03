@@ -2,6 +2,7 @@ import type { ActionDefinition, JsonSchema } from "../../core/types.ts";
 
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
+import { mixpanelMcpOAuthScopes } from "./scopes.ts";
 
 const service = "mixpanel";
 
@@ -10,6 +11,7 @@ interface MixpanelActionSource {
   description: string;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
+  requiredScopes?: readonly string[];
   followUpActions?: string[];
 }
 
@@ -83,7 +85,55 @@ const rawOutput = (description: string): JsonSchema =>
     { required: ["raw"], description },
   );
 
+const mcpToolSchema = s.looseObject("Mixpanel MCP tool summary.", {
+  name: s.string("MCP tool name."),
+  description: s.string("MCP tool description when advertised."),
+  inputSchema: s.unknown("JSON Schema for the MCP tool arguments when advertised."),
+});
+
+const mcpToolOutputSchema = s.object(
+  "Normalized Mixpanel MCP tool response.",
+  {
+    result: s.unknown("Parsed structuredContent, JSON text payload, or the raw MCP tool result envelope."),
+  },
+  { required: ["result"] },
+);
+
 const actions: MixpanelActionSource[] = [
+  {
+    name: "list_mcp_tools",
+    description:
+      "List tools exposed by the Mixpanel hosted MCP server for the connected OAuth user. Prefer this before call_mcp_tool. Requires an oauth2 connection (Free-friendly).",
+    requiredScopes: mixpanelMcpOAuthScopes,
+    followUpActions: ["mixpanel.call_mcp_tool"],
+    inputSchema: s.object("The input payload for listing Mixpanel MCP tools.", {}),
+    outputSchema: s.object(
+      {
+        tools: s.array("Tools advertised by the Mixpanel MCP server.", mcpToolSchema),
+        tool_count: s.integer("Number of tools returned."),
+      },
+      { required: ["tools", "tool_count"], description: "The Mixpanel MCP tool list." },
+    ),
+  },
+  {
+    name: "call_mcp_tool",
+    description:
+      "Call one Mixpanel hosted MCP tool by name with JSON arguments. Use list_mcp_tools first to discover names and input schemas. Requires an oauth2 connection (Free-friendly). Write-capable tools can mutate Mixpanel data — only call them with explicit user intent.",
+    requiredScopes: mixpanelMcpOAuthScopes,
+    followUpActions: ["mixpanel.list_mcp_tools"],
+    inputSchema: s.object(
+      "The input payload for calling a Mixpanel MCP tool.",
+      {
+        tool: s.nonEmptyString("Exact MCP tool name returned by list_mcp_tools."),
+        arguments: s.record(
+          "JSON arguments object matching the tool inputSchema from list_mcp_tools. Omit or pass {} when the tool takes no arguments.",
+          s.unknown("Tool argument value."),
+        ),
+      },
+      { required: ["tool"] },
+    ),
+    outputSchema: mcpToolOutputSchema,
+  },
   {
     name: "list_saved_cohorts",
     description: "List saved cohorts available in a Mixpanel project.",
@@ -374,7 +424,7 @@ export const mixpanelActions: ActionDefinition[] = actions.map((action) =>
   defineProviderAction(service, {
     name: action.name,
     description: action.description,
-    requiredScopes: [],
+    requiredScopes: action.requiredScopes ?? [],
     inputSchema: action.inputSchema,
     outputSchema: action.outputSchema,
     followUpActions: action.followUpActions,

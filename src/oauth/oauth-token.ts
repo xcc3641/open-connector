@@ -28,6 +28,7 @@ interface AuthorizationCodeTokenRequest extends OAuthTokenRequestOptions {
 
 interface RefreshTokenRequest extends OAuthTokenRequestOptions {
   refreshToken: string;
+  extraFields?: Record<string, string>;
   createError: OAuthTokenErrorFactory;
 }
 
@@ -52,7 +53,10 @@ export async function requestRefreshToken(
 ): Promise<Extract<ResolvedCredential, { authType: "oauth2" }>> {
   return requestToken({
     ...input,
-    fields: createRefreshTokenFields(input),
+    fields: {
+      ...createRefreshTokenFields(input),
+      ...(input.extraFields ?? {}),
+    },
   });
 }
 

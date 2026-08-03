@@ -27,6 +27,12 @@ import {
   requireApiKeyCredential,
   toProviderProxyError,
 } from "../provider-runtime.ts";
+import {
+  callMixpanelMcpTool,
+  listMixpanelMcpTools,
+  mixpanelMcpEndpoint,
+  validateMixpanelMcpAccessToken,
+} from "./runtime.ts";
 
 const service = "mixpanel";
 const mixpanelDefaultBaseUrl = "https://mixpanel.com";
@@ -37,7 +43,8 @@ const mixpanelAllowedHostSuffix = ".mixpanel.com";
 type MixpanelPhase = "validate" | "execute";
 type MixpanelActionHandler = (input: Record<string, unknown>, context: MixpanelActionContext) => Promise<unknown>;
 
-interface MixpanelActionContext {
+interface MixpanelRestContext {
+  authType: "api_key";
   apiKey: string;
   serviceAccountUsername: string;
   projectId: string;
@@ -46,6 +53,16 @@ interface MixpanelActionContext {
   fetcher: typeof fetch;
   signal?: AbortSignal;
 }
+
+interface MixpanelMcpContext {
+  authType: "oauth2";
+  accessToken: string;
+  fetcher: typeof fetch;
+  signal?: AbortSignal;
+  endpoint: string;
+}
+
+type MixpanelActionContext = MixpanelRestContext | MixpanelMcpContext;
 
 interface MixpanelRequestInput {
   baseUrl: string;
@@ -63,44 +80,50 @@ interface MixpanelRequestInput {
 }
 
 export const mixpanelActionHandlers: Record<string, MixpanelActionHandler> = {
+  list_mcp_tools(_input, context) {
+    return listMcpTools(context);
+  },
+  call_mcp_tool(input, context) {
+    return callMcpTool(input, context);
+  },
   list_saved_cohorts(input, context) {
-    return listSavedCohorts(input, context);
+    return listSavedCohorts(input, requireRestContext(context, "list_saved_cohorts"));
   },
   list_funnels(input, context) {
-    return listFunnels(input, context);
+    return listFunnels(input, requireRestContext(context, "list_funnels"));
   },
   query_funnel(input, context) {
-    return queryFunnel(input, context);
+    return queryFunnel(input, requireRestContext(context, "query_funnel"));
   },
   query_retention_report(input, context) {
-    return queryRetentionReport(input, context);
+    return queryRetentionReport(input, requireRestContext(context, "query_retention_report"));
   },
   query_frequency_report(input, context) {
-    return queryFrequencyReport(input, context);
+    return queryFrequencyReport(input, requireRestContext(context, "query_frequency_report"));
   },
   query_numeric_sum(input, context) {
-    return queryNumericSum(input, context);
+    return queryNumericSum(input, requireRestContext(context, "query_numeric_sum"));
   },
   query_numeric_average(input, context) {
-    return queryNumericAverage(input, context);
+    return queryNumericAverage(input, requireRestContext(context, "query_numeric_average"));
   },
   query_top_events(input, context) {
-    return queryTopEvents(input, context);
+    return queryTopEvents(input, requireRestContext(context, "query_top_events"));
   },
   query_segmentation_report(input, context) {
-    return querySegmentationReport(input, context);
+    return querySegmentationReport(input, requireRestContext(context, "query_segmentation_report"));
   },
   query_saved_report(input, context) {
-    return querySavedReport(input, context);
+    return querySavedReport(input, requireRestContext(context, "query_saved_report"));
   },
   query_profiles(input, context) {
-    return queryProfiles(input, context);
+    return queryProfiles(input, requireRestContext(context, "query_profiles"));
   },
   profile_event_activity(input, context) {
-    return profileEventActivity(input, context);
+    return profileEventActivity(input, requireRestContext(context, "profile_event_activity"));
   },
   export_events(input, context) {
-    return exportEvents(input, context);
+    return exportEvents(input, requireRestContext(context, "export_events"));
   },
 };
 
@@ -108,27 +131,43 @@ export const executors: ProviderExecutors = defineProviderExecutors<MixpanelActi
   service,
   handlers: mixpanelActionHandlers,
   async createContext(context: ExecutionContext, fetcher: typeof fetch): Promise<MixpanelActionContext> {
-    const credential = await requireApiKeyCredential(context, service);
-    return {
-      apiKey: credential.apiKey,
-      serviceAccountUsername: normalizeRequiredString(
-        credential.values.serviceAccountUsername ?? credential.metadata.serviceAccountUsername,
-        "Service account username",
-      ),
-      projectId: normalizeRequiredId(credential.values.projectId ?? credential.metadata.projectId, "Project ID"),
-      baseUrl: normalizeMixpanelBaseUrl(
-        optionalString(credential.values.baseUrl) ?? optionalString(credential.metadata.baseUrl),
-        mixpanelDefaultBaseUrl,
-        "Base URL",
-      ),
-      exportBaseUrl: normalizeMixpanelBaseUrl(
-        optionalString(credential.values.exportBaseUrl) ?? optionalString(credential.metadata.exportBaseUrl),
-        mixpanelDefaultExportBaseUrl,
-        "Export Base URL",
-      ),
-      fetcher,
-      signal: context.signal,
-    };
+    const credential = await context.getCredential(service);
+    if (credential?.authType === "oauth2") {
+      return {
+        authType: "oauth2",
+        accessToken: credential.accessToken,
+        fetcher,
+        signal: context.signal,
+        endpoint: mixpanelMcpEndpoint,
+      };
+    }
+    if (credential?.authType === "api_key") {
+      return {
+        authType: "api_key",
+        apiKey: credential.apiKey,
+        serviceAccountUsername: normalizeRequiredString(
+          credential.values.serviceAccountUsername ?? credential.metadata.serviceAccountUsername,
+          "Service account username",
+        ),
+        projectId: normalizeRequiredId(credential.values.projectId ?? credential.metadata.projectId, "Project ID"),
+        baseUrl: normalizeMixpanelBaseUrl(
+          optionalString(credential.values.baseUrl) ?? optionalString(credential.metadata.baseUrl),
+          mixpanelDefaultBaseUrl,
+          "Base URL",
+        ),
+        exportBaseUrl: normalizeMixpanelBaseUrl(
+          optionalString(credential.values.exportBaseUrl) ?? optionalString(credential.metadata.exportBaseUrl),
+          mixpanelDefaultExportBaseUrl,
+          "Export Base URL",
+        ),
+        fetcher,
+        signal: context.signal,
+      };
+    }
+    throw new ProviderRequestError(
+      401,
+      "Connect mixpanel with OAuth (MCP) or configure a service-account API key first.",
+    );
   },
 });
 
@@ -177,10 +216,78 @@ export const proxy: ProviderProxyExecutor = async (input, context) => {
 };
 
 export const credentialValidators: CredentialValidators = {
+  async oauth2(input, { fetcher, signal }) {
+    return validateMixpanelMcpAccessToken({
+      accessToken: input.accessToken,
+      fetcher,
+      signal,
+      endpoint: mixpanelMcpEndpoint,
+    });
+  },
   async apiKey(input, { fetcher, signal }) {
     return validateMixpanelCredential(input.apiKey, input.values, fetcher, signal);
   },
 };
+
+async function listMcpTools(context: MixpanelActionContext): Promise<unknown> {
+  const mcp = requireMcpContext(context, "list_mcp_tools");
+  const tools = await listMixpanelMcpTools({
+    accessToken: mcp.accessToken,
+    fetcher: mcp.fetcher,
+    signal: mcp.signal,
+    endpoint: mcp.endpoint,
+  });
+  return {
+    tools,
+    tool_count: tools.length,
+  };
+}
+
+async function callMcpTool(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+  const mcp = requireMcpContext(context, "call_mcp_tool");
+  const toolName = normalizeRequiredString(input.tool, "tool");
+  const args = normalizeMcpArguments(input.arguments);
+  const result = await callMixpanelMcpTool({
+    accessToken: mcp.accessToken,
+    fetcher: mcp.fetcher,
+    signal: mcp.signal,
+    endpoint: mcp.endpoint,
+    toolName,
+    arguments: args,
+  });
+  return { result };
+}
+
+function requireMcpContext(context: MixpanelActionContext, actionName: string): MixpanelMcpContext {
+  if (context.authType !== "oauth2") {
+    throw new ProviderRequestError(
+      400,
+      `${actionName} requires a Mixpanel oauth2 connection (hosted MCP). Connect Mixpanel with OAuth instead of a service-account API key.`,
+    );
+  }
+  return context;
+}
+
+function requireRestContext(context: MixpanelActionContext, actionName: string): MixpanelRestContext {
+  if (context.authType !== "api_key") {
+    throw new ProviderRequestError(
+      400,
+      `${actionName} uses the Mixpanel Query/Export REST APIs and requires a service-account api_key connection. On Free plans use list_mcp_tools / call_mcp_tool instead.`,
+    );
+  }
+  return context;
+}
+
+function normalizeMcpArguments(value: unknown): Record<string, unknown> {
+  if (value == null) {
+    return {};
+  }
+  const record = optionalRecord(value);
+  if (!record) {
+    throw new ProviderRequestError(400, "arguments must be a JSON object");
+  }
+  return record;
+}
 
 async function validateMixpanelCredential(
   apiKey: string,
@@ -232,7 +339,7 @@ async function validateMixpanelCredential(
   };
 }
 
-async function listSavedCohorts(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function listSavedCohorts(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/cohorts/list",
@@ -245,7 +352,7 @@ async function listSavedCohorts(input: Record<string, unknown>, context: Mixpane
   return { cohorts, raw: cohorts };
 }
 
-async function listFunnels(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function listFunnels(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/funnels/list",
@@ -258,7 +365,7 @@ async function listFunnels(input: Record<string, unknown>, context: MixpanelActi
   return { funnels, raw: funnels };
 }
 
-async function queryFunnel(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryFunnel(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/funnels",
@@ -280,7 +387,7 @@ async function queryFunnel(input: Record<string, unknown>, context: MixpanelActi
   return { raw: requireObjectPayload(payload, "mixpanel funnel response") };
 }
 
-async function queryRetentionReport(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryRetentionReport(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/retention",
@@ -305,7 +412,7 @@ async function queryRetentionReport(input: Record<string, unknown>, context: Mix
   return { raw: requireObjectPayload(payload, "mixpanel retention response") };
 }
 
-async function queryFrequencyReport(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryFrequencyReport(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/retention/addiction",
@@ -325,7 +432,7 @@ async function queryFrequencyReport(input: Record<string, unknown>, context: Mix
   return { raw: requireObjectPayload(payload, "mixpanel frequency response") };
 }
 
-async function queryNumericSum(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryNumericSum(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const record = requireObjectPayload(
     await requestMixpanelJson({
       ...requestBase(context),
@@ -342,7 +449,7 @@ async function queryNumericSum(input: Record<string, unknown>, context: Mixpanel
   };
 }
 
-async function queryNumericAverage(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryNumericAverage(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const record = requireObjectPayload(
     await requestMixpanelJson({
       ...requestBase(context),
@@ -359,7 +466,7 @@ async function queryNumericAverage(input: Record<string, unknown>, context: Mixp
   };
 }
 
-async function queryTopEvents(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryTopEvents(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const record = requireObjectPayload(
     await requestMixpanelJson({
       ...requestBase(context),
@@ -381,10 +488,7 @@ async function queryTopEvents(input: Record<string, unknown>, context: MixpanelA
   };
 }
 
-async function querySegmentationReport(
-  input: Record<string, unknown>,
-  context: MixpanelActionContext,
-): Promise<unknown> {
+async function querySegmentationReport(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/segmentation",
@@ -401,7 +505,7 @@ async function querySegmentationReport(
   return { raw: requireObjectPayload(payload, "mixpanel segmentation response") };
 }
 
-async function querySavedReport(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function querySavedReport(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const payload = await requestMixpanelJson({
     ...requestBase(context),
     path: "/api/query/insights",
@@ -415,7 +519,7 @@ async function querySavedReport(input: Record<string, unknown>, context: Mixpane
   return { raw: requireObjectPayload(payload, "mixpanel saved report response") };
 }
 
-async function queryProfiles(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function queryProfiles(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const form = new URLSearchParams();
   const distinctIds = normalizeOptionalStringArray(input.distinct_ids);
   if (distinctIds) form.set("distinct_ids", JSON.stringify(distinctIds));
@@ -452,7 +556,7 @@ async function queryProfiles(input: Record<string, unknown>, context: MixpanelAc
   };
 }
 
-async function profileEventActivity(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function profileEventActivity(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const distinctIds = normalizeRequiredStringArray(input.distinct_ids, "distinct_ids");
   const record = requireObjectPayload(
     await requestMixpanelJson({
@@ -479,7 +583,7 @@ async function profileEventActivity(input: Record<string, unknown>, context: Mix
   };
 }
 
-async function exportEvents(input: Record<string, unknown>, context: MixpanelActionContext): Promise<unknown> {
+async function exportEvents(input: Record<string, unknown>, context: MixpanelRestContext): Promise<unknown> {
   const text = await requestMixpanelText({
     ...requestBase(context, context.exportBaseUrl),
     path: "/api/2.0/export",
@@ -513,7 +617,7 @@ async function exportEvents(input: Record<string, unknown>, context: MixpanelAct
   };
 }
 
-function numericQuery(input: Record<string, unknown>, context: MixpanelActionContext) {
+function numericQuery(input: Record<string, unknown>, context: MixpanelRestContext) {
   return compactObject({
     project_id: resolveProjectId(input, context),
     workspace_id: normalizeOptionalId(input.workspace_id),
@@ -526,7 +630,7 @@ function numericQuery(input: Record<string, unknown>, context: MixpanelActionCon
   });
 }
 
-function requestBase(context: MixpanelActionContext, baseUrl = context.baseUrl): Omit<MixpanelRequestInput, "path"> {
+function requestBase(context: MixpanelRestContext, baseUrl = context.baseUrl): Omit<MixpanelRequestInput, "path"> {
   return {
     baseUrl,
     apiKey: context.apiKey,
@@ -647,7 +751,7 @@ function createMixpanelError(
   return new ProviderRequestError(response.status || 502, message);
 }
 
-function resolveProjectId(input: Record<string, unknown>, context: MixpanelActionContext): string {
+function resolveProjectId(input: Record<string, unknown>, context: MixpanelRestContext): string {
   return normalizeOptionalId(input.project_id) ?? context.projectId;
 }
 
