@@ -3,7 +3,7 @@ import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.t
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { createProviderTimeout, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
-import { getBlueskyPostTextValidationIssues } from "./actions.ts";
+import { blueskyImageMaxBytes, blueskyVideoMaxBytes, getBlueskyPostTextValidationIssues } from "./actions.ts";
 
 export interface BlueskyContext extends ApiKeyProviderContext {
   handle: string;
@@ -113,6 +113,265 @@ export const blueskyActionHandlers: Record<string, BlueskyActionHandler> = {
       commit: optionalRecord(record.commit) ?? null,
     };
   },
+  async create_post_with_image(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const imageBytes = decodeBase64Input(input.imageBase64, "imageBase64", blueskyImageMaxBytes);
+    const mimeType = optionalString(input.imageMimeType) ?? "image/jpeg";
+
+    const uploadUrl = new URL("/xrpc/com.atproto.repo.uploadBlob", blueskyApiBaseUrl);
+    const timeout = createProviderTimeout(context.signal, blueskyDefaultRequestTimeoutMs);
+    let response: Response;
+    try {
+      try {
+        response = await context.fetcher(uploadUrl.toString(), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": mimeType,
+            authorization: `Bearer ${session.accessJwt}`,
+            "user-agent": providerUserAgent,
+          },
+          body: imageBytes as unknown as BodyInit,
+          signal: timeout.signal,
+        });
+      } catch (error) {
+        const message = timeout.didTimeout()
+          ? "request timed out"
+          : error instanceof Error
+            ? error.message
+            : "unknown transport error";
+        throw new ProviderRequestError(timeout.didTimeout() ? 504 : 502, `Bluesky image upload failed: ${message}`);
+      }
+    } finally {
+      timeout.cleanup();
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new ProviderRequestError(response.status, `Bluesky blob upload failed: ${text}`);
+    }
+
+    const blobResult = requireRecord(await readBlueskyJson(response, "invalid Bluesky blob response"), "blob result");
+    const blobRecord = requireRecord(blobResult.blob, "blob record");
+
+    const postRecord = buildTextPostRecord(input);
+    postRecord.embed = {
+      $type: "app.bsky.embed.images",
+      images: [
+        {
+          alt: optionalString(input.alt) ?? "",
+          image: blobRecord,
+        },
+      ],
+    };
+
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/com.atproto.repo.createRecord",
+      method: "POST",
+      body: {
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record: postRecord,
+      },
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky create record response");
+    return {
+      uri: requireResponseString(record.uri, "uri"),
+      cid: requireResponseString(record.cid, "cid"),
+      validationStatus: optionalString(record.validationStatus) ?? null,
+      commit: optionalRecord(record.commit) ?? null,
+    };
+  },
+  async like_post(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/com.atproto.repo.createRecord",
+      method: "POST",
+      body: {
+        repo: session.did,
+        collection: "app.bsky.feed.like",
+        record: {
+          $type: "app.bsky.feed.like",
+          subject: {
+            uri: requireInputString(input.uri, "uri"),
+            cid: requireInputString(input.cid, "cid"),
+          },
+          createdAt: new Date().toISOString(),
+        },
+      },
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky like record response");
+    return {
+      uri: requireResponseString(record.uri, "uri"),
+      cid: requireResponseString(record.cid, "cid"),
+    };
+  },
+  async create_post_with_video(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const videoBytes = decodeBase64Input(input.videoBase64, "videoBase64", blueskyVideoMaxBytes);
+    const mimeType = optionalString(input.videoMimeType) ?? "video/mp4";
+
+    const uploadUrl = new URL("/xrpc/com.atproto.repo.uploadBlob", blueskyApiBaseUrl);
+    const timeout = createProviderTimeout(context.signal, blueskyDefaultRequestTimeoutMs);
+    let blobRecord: Record<string, unknown>;
+    try {
+      let response: Response;
+      try {
+        response = await context.fetcher(uploadUrl.toString(), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": mimeType,
+            authorization: `Bearer ${session.accessJwt}`,
+            "user-agent": providerUserAgent,
+          },
+          body: videoBytes as unknown as BodyInit,
+          signal: timeout.signal,
+        });
+      } catch (error) {
+        const message = timeout.didTimeout()
+          ? "request timed out"
+          : error instanceof Error
+            ? error.message
+            : "unknown transport error";
+        throw new ProviderRequestError(timeout.didTimeout() ? 504 : 502, `Bluesky video upload failed: ${message}`);
+      }
+      await assertBlueskyResponse(response, "execute");
+      const uploadJson = await readBlueskyJson(response, "invalid uploadBlob response");
+      blobRecord = requireRecord(requireRecord(uploadJson, "uploadBlob response").blob, "blob record");
+    } finally {
+      timeout.cleanup();
+    }
+
+    const postRecord = buildTextPostRecord(input);
+    postRecord.embed = compactObject({
+      $type: "app.bsky.embed.video",
+      video: blobRecord,
+      alt: optionalString(input.alt) ?? undefined,
+      aspectRatio: {
+        width: typeof input.width === "number" ? input.width : 16,
+        height: typeof input.height === "number" ? input.height : 9,
+      },
+    });
+
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/com.atproto.repo.createRecord",
+      method: "POST",
+      body: {
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record: postRecord,
+      },
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky create record response");
+    return {
+      uri: requireResponseString(record.uri, "uri"),
+      cid: requireResponseString(record.cid, "cid"),
+      validationStatus: optionalString(record.validationStatus) ?? null,
+      commit: optionalRecord(record.commit) ?? null,
+    };
+  },
+  async update_profile(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+
+    let existingRecord: Record<string, unknown> = {};
+    try {
+      const getRes = await requestBlueskyJson({
+        path: "/xrpc/com.atproto.repo.getRecord",
+        method: "GET",
+        query: {
+          repo: session.did,
+          collection: "app.bsky.actor.profile",
+          rkey: "self",
+        },
+        accessJwt: session.accessJwt,
+        fetcher: context.fetcher,
+        signal: context.signal,
+        phase: "execute",
+      });
+      const getJson = optionalRecord(getRes);
+      if (getJson && getJson.value) {
+        existingRecord = requireRecord(getJson.value, "profile value");
+      }
+    } catch (error) {
+      if (!isMissingProfileRecordError(error)) {
+        throw error;
+      }
+      // A missing profile record is created by putRecord below.
+    }
+
+    const newRecord: Record<string, unknown> = {
+      $type: "app.bsky.actor.profile",
+      ...existingRecord,
+    };
+
+    if (input.displayName === null) {
+      delete newRecord.displayName;
+    } else if (typeof input.displayName === "string") {
+      newRecord.displayName = input.displayName;
+    }
+    if (input.description === null) {
+      delete newRecord.description;
+    } else if (typeof input.description === "string") {
+      newRecord.description = input.description;
+    }
+
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/com.atproto.repo.putRecord",
+      method: "POST",
+      body: {
+        repo: session.did,
+        collection: "app.bsky.actor.profile",
+        rkey: "self",
+        record: newRecord,
+      },
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky profile putRecord response");
+    return {
+      uri: requireResponseString(record.uri, "uri"),
+      cid: requireResponseString(record.cid, "cid"),
+    };
+  },
 };
 
 export async function validateBlueskyCredential(
@@ -196,16 +455,87 @@ function buildSearchPostsQuery(input: Record<string, unknown>): Record<string, u
 }
 
 function buildTextPostRecord(input: Record<string, unknown>): Record<string, unknown> {
+  const text = requirePostText(input.text);
+  const explicitFacets = readRecordArray(input.facets);
+  const facets = explicitFacets && explicitFacets.length > 0 ? explicitFacets : parseBlueskyRichTextFacets(text);
+
+  let tags = readStringArray(input.tags);
+  if (!tags || tags.length === 0) {
+    const extractedTags: string[] = [];
+    for (const facet of facets) {
+      const features = facet.features as Array<Record<string, unknown>> | undefined;
+      if (features) {
+        for (const feature of features) {
+          if (feature.$type === "app.bsky.richtext.facet#tag" && typeof feature.tag === "string") {
+            extractedTags.push(feature.tag);
+          }
+        }
+      }
+    }
+    if (extractedTags.length > 0) {
+      tags = extractedTags;
+    }
+  }
+
   return compactObject({
     $type: "app.bsky.feed.post",
-    text: requirePostText(input.text),
+    text,
     createdAt: optionalString(input.createdAt) ?? new Date().toISOString(),
     langs: readStringArray(input.langs),
-    tags: readStringArray(input.tags),
-    facets: readRecordArray(input.facets),
+    tags,
+    facets,
     reply: optionalRecord(input.reply),
     labels: optionalRecord(input.labels),
   });
+}
+
+function parseBlueskyRichTextFacets(text: string): Array<Record<string, unknown>> {
+  const facets: Array<Record<string, unknown>> = [];
+  const encoder = new TextEncoder();
+
+  const urlRegex = /https?:\/\/[^\s\n]+/g;
+  let match: RegExpExecArray | null;
+  while ((match = urlRegex.exec(text)) !== null) {
+    let url = match[0];
+    while (/[.,!?:;)]$/.test(url)) {
+      url = url.slice(0, -1);
+    }
+    const byteStart = encoder.encode(text.slice(0, match.index)).byteLength;
+    const byteEnd = byteStart + encoder.encode(url).byteLength;
+    facets.push({
+      $type: "app.bsky.richtext.facet",
+      index: { byteStart, byteEnd },
+      features: [
+        {
+          $type: "app.bsky.richtext.facet#link",
+          uri: url,
+        },
+      ],
+    });
+  }
+
+  const tagRegex = /(?:^|\s)#([a-zA-Z0-9_\u4e00-\u9fa5]+)/g;
+  while ((match = tagRegex.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const tag = match[1];
+    const hashIndexInMatch = fullMatch.indexOf("#");
+    const charIndex = match.index + hashIndexInMatch;
+    const tagString = "#" + tag;
+    const byteStart = encoder.encode(text.slice(0, charIndex)).byteLength;
+    const byteEnd = byteStart + encoder.encode(tagString).byteLength;
+    facets.push({
+      $type: "app.bsky.richtext.facet",
+      index: { byteStart, byteEnd },
+      features: [
+        {
+          $type: "app.bsky.richtext.facet#tag",
+          tag: tag,
+        },
+      ],
+    });
+  }
+
+  return facets;
 }
 
 async function requestBlueskyJson(options: BlueskyRequestOptions): Promise<unknown> {
@@ -327,12 +657,46 @@ function requirePostText(value: unknown): string {
   return value;
 }
 
+function decodeBase64Input(value: unknown, fieldName: string, maxBytes: number): Uint8Array {
+  const encoded = requireInputString(value, fieldName).replace(/\s/g, "");
+  if (encoded.length > Math.ceil(maxBytes / 3) * 4 + 4) {
+    throw new ProviderRequestError(400, `${fieldName} exceeds ${maxBytes} decoded bytes`);
+  }
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+    throw new ProviderRequestError(400, `${fieldName} must be valid Base64`);
+  }
+
+  let decoded: string;
+  try {
+    decoded = atob(encoded);
+  } catch {
+    throw new ProviderRequestError(400, `${fieldName} must be valid Base64`);
+  }
+
+  const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  if (bytes.byteLength === 0) {
+    throw new ProviderRequestError(400, `${fieldName} must not be empty`);
+  }
+  if (bytes.byteLength > maxBytes) {
+    throw new ProviderRequestError(400, `${fieldName} exceeds ${maxBytes} decoded bytes`);
+  }
+  return bytes;
+}
+
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   const record = optionalRecord(value);
   if (!record) {
     throw new ProviderRequestError(502, `invalid ${label}`);
   }
   return record;
+}
+
+function isMissingProfileRecordError(error: unknown): boolean {
+  if (!(error instanceof ProviderRequestError) || error.status !== 400) {
+    return false;
+  }
+  const details = optionalRecord(error.details);
+  return optionalString(details?.error) === "RecordNotFound";
 }
 
 function requireArray(value: unknown, fieldName: string): unknown[] {

@@ -7,6 +7,8 @@ const service = "bluesky" as const;
 
 export const blueskyPostTextMaxBytes = 3000;
 export const blueskyPostTextMaxGraphemes = 300;
+export const blueskyImageMaxBytes = 1_000_000;
+export const blueskyVideoMaxBytes = 50_000_000;
 
 const textEncoder = new TextEncoder();
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -125,6 +127,97 @@ export const blueskyActions: ProviderActionDefinition[] = [
       cid: cidSchema,
       validationStatus: s.nullable(s.string("The validation status returned by Bluesky.")),
       commit: s.nullable(compactRecordSchema),
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "create_post_with_image",
+    description: "Create a Bluesky post with an attached JPEG or PNG image from Base64 data.",
+    requiredScopes: [],
+    inputSchema: s.object(
+      "Fields for creating a Bluesky post with image.",
+      {
+        text: postTextSchema,
+        imageBase64: s.string("Base64 encoded string of the JPEG or PNG image.", { minLength: 1 }),
+        imageMimeType: s.stringEnum("MIME type of the image.", ["image/jpeg", "image/png"]),
+        alt: s.string("Alt text description for the attached image.", { minLength: 1 }),
+        createdAt: s.dateTime("Client-declared timestamp for the post."),
+        langs: s.array("Human language codes for the post text.", s.string("A language code.", { minLength: 1 }), {
+          maxItems: 3,
+        }),
+        tags: s.array(
+          "Additional hashtag values without the hash prefix.",
+          s.string("A hashtag value.", { minLength: 1, maxLength: 640 }),
+          { maxItems: 8 },
+        ),
+      },
+      { optional: ["imageMimeType", "alt", "createdAt", "langs", "tags"] },
+    ),
+    outputSchema: s.object("The Bluesky record creation response.", {
+      uri: postUriSchema,
+      cid: cidSchema,
+      validationStatus: s.nullable(s.string("The validation status returned by Bluesky.")),
+      commit: s.nullable(compactRecordSchema),
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "like_post",
+    description: "Like a Bluesky post by its AT URI and CID.",
+    requiredScopes: [],
+    inputSchema: s.object("Fields for liking a Bluesky post.", {
+      uri: postUriSchema,
+      cid: cidSchema,
+    }),
+    outputSchema: s.object("The Bluesky record creation response for the like.", {
+      uri: postUriSchema,
+      cid: cidSchema,
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "create_post_with_video",
+    description: "Create a Bluesky post with a video attachment (MP4 / MOV Base64).",
+    requiredScopes: [],
+    inputSchema: s.object(
+      "Fields for creating a post with video.",
+      {
+        text: postTextSchema,
+        videoBase64: s.string("The Base64 encoded video content.", { minLength: 1 }),
+        videoMimeType: s.stringEnum("The video MIME type.", ["video/mp4", "video/quicktime"]),
+        alt: s.string("Alt text / accessibility description for the video."),
+        width: s.number("Video width in pixels.", { minimum: 1, maximum: 16384 }),
+        height: s.number("Video height in pixels.", { minimum: 1, maximum: 16384 }),
+        createdAt: s.dateTime("Client-declared timestamp for the post."),
+        langs: s.array("Languages used in the post.", s.string("A language code.", { minLength: 1 }), {
+          maxItems: 3,
+        }),
+        tags: s.array("Tags for the post.", s.string("A tag value.", { minLength: 1, maxLength: 640 }), {
+          maxItems: 8,
+        }),
+        facets: s.array("Rich text facets to attach to the post.", textFacetSchema),
+      },
+      { optional: ["videoMimeType", "alt", "width", "height", "createdAt", "langs", "tags", "facets"] },
+    ),
+    outputSchema: s.object("The Bluesky record creation response.", {
+      uri: postUriSchema,
+      cid: cidSchema,
+      validationStatus: s.nullable(s.string("The validation status returned by Bluesky.")),
+      commit: s.nullable(compactRecordSchema),
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "update_profile",
+    description: "Update the Bluesky actor profile description or display name.",
+    requiredScopes: [],
+    inputSchema: s.object(
+      "Fields for updating the Bluesky profile.",
+      {
+        displayName: s.nullable(s.string("The display name.")),
+        description: s.nullable(s.string("The bio / description string.")),
+      },
+      { optional: ["displayName", "description"] },
+    ),
+    outputSchema: s.object("The Bluesky profile update response.", {
+      uri: postUriSchema,
+      cid: cidSchema,
     }),
   }),
 ];
