@@ -86,6 +86,10 @@ const oauthClientConfigRequestSchema = jsonSchema.object(
     clientSecret: jsonSchema.string({
       description: "OAuth app client secret. Optional only for public-client providers.",
     }),
+    requestedScopes: jsonSchema.array(jsonSchema.string(), {
+      minItems: 1,
+      description: "Non-empty provider-declared scope subset to request. Omit to use every provider default.",
+    }),
     extra: {
       type: "object",
       additionalProperties: { type: "string" },
@@ -336,14 +340,34 @@ export function createOpenApiDocument(
             configured: jsonSchema.boolean({
               description: "Whether a local OAuth client config is configured.",
             }),
+            customClientAvailable: jsonSchema.boolean({
+              description: "Whether the console may use a connection-scoped OAuth client for this provider.",
+            }),
             clientId: jsonSchema.nullable(jsonSchema.string({ description: "Configured OAuth client id." })),
             expectedRedirectUri: jsonSchema.string({
               description: "Callback URL to configure in the provider OAuth app.",
             }),
             auth: jsonSchema.unknownObject("Provider OAuth capability metadata."),
+            requestedScopes: jsonSchema.nullable(
+              jsonSchema.array(jsonSchema.string(), {
+                description: "Configured scope subset, or null when provider defaults are used.",
+              }),
+            ),
+            effectiveScopes: jsonSchema.array(jsonSchema.string(), {
+              description: "Scopes the runtime will include in new authorization requests.",
+            }),
           },
           {
-            required: ["service", "configured", "clientId", "expectedRedirectUri", "auth"],
+            required: [
+              "service",
+              "configured",
+              "customClientAvailable",
+              "clientId",
+              "expectedRedirectUri",
+              "auth",
+              "requestedScopes",
+              "effectiveScopes",
+            ],
             description: "OAuth client config summary safe for the local console.",
           },
         ),
@@ -1009,6 +1033,8 @@ function createOAuthAuthorizationPath(): Record<string, unknown> {
     post: {
       tags: ["OAuth"],
       summary: "Start provider OAuth authorization.",
+      description:
+        "The console may provide a connection-scoped OAuth app through clientId/clientSecret and provider-declared extra fields. The provider must be enabled through OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH and pending OAuth state requires OOMOL_CONNECT_ENCRYPTION_KEY.",
       requestBody: {
         required: true,
         content: {
@@ -1019,6 +1045,24 @@ function createOAuthAuthorizationPath(): Record<string, unknown> {
                 connectionName: jsonSchema.string({
                   description: "Optional local connection name. Defaults to default.",
                 }),
+                clientId: jsonSchema.string({ description: "Optional connection-scoped OAuth app client id." }),
+                clientSecret: jsonSchema.string({
+                  description: "Optional connection-scoped OAuth app client secret.",
+                }),
+                requestedScopes: jsonSchema.array(jsonSchema.string(), {
+                  minItems: 1,
+                  description: "Optional non-empty provider-declared scope subset to request.",
+                }),
+                extra: {
+                  type: "object",
+                  additionalProperties: { type: "string" },
+                  description: "Provider-declared non-secret OAuth client fields.",
+                },
+                secretExtra: {
+                  type: "object",
+                  additionalProperties: { type: "string" },
+                  description: "Provider-declared secret OAuth client fields.",
+                },
               },
               {
                 required: ["service"],
@@ -1055,7 +1099,7 @@ function createOAuthConfigPath(): Record<string, unknown> {
       tags: ["OAuth"],
       summary: "Upsert local OAuth client configuration.",
       description:
-        "Open-source users provide their own OAuth app. Additional extra fields are declared by provider catalog auth metadata.",
+        "Open-source users provide their own OAuth app. requestedScopes may narrow the provider-declared defaults but cannot add scopes. Additional extra fields are declared by provider catalog auth metadata.",
       requestBody: {
         required: true,
         content: {

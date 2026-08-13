@@ -1,6 +1,6 @@
 {
   "name": "@oomol-lab/open-connector",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "private": true,
   "workspaces": [
     "web"
@@ -19,6 +19,7 @@
     "typecheck": "npm run generate:registry && node scripts/typecheck.ts src scripts-all examples",
     "generate:registry": "node scripts/generate-provider-registry.ts",
     "generate:catalog": "node scripts/generate-catalog.ts",
+    "export:feishu-permissions": "node scripts/export-feishu-permissions.ts",
     "generate:provider": "node scripts/generate-provider.ts",
     "runtime:data": "node scripts/runtime-data.ts",
     "docker:local": "node scripts/docker-local.ts",
@@ -35,7 +36,9 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@scalar/hono-api-reference": "^0.11.7",
     "ali-oss": "^6.23.0",
+    "fast-xml-builder": "^1.3.0",
     "fast-xml-parser": "^5.10.1",
+    "fast-xml-validator": "^1.4.1",
     "hono": "^4.12.27",
     "imapflow": "^1.4.6",
     "jose": "^6.2.3",

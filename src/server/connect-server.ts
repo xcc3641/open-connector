@@ -2,6 +2,7 @@ import type { CatalogStore, RuntimeActionDefinition } from "../catalog-store.ts"
 import type { ConnectionService } from "../connection-service.ts";
 import type { ActionPolicySnapshot } from "../core/action-policy.ts";
 import type { ActionSearchIndexProvider, ActionSearchResult } from "../core/action-search.ts";
+import type { OAuthClientConfigInput } from "../oauth/oauth-client-config-service.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { LocalAuthOptions } from "./api/auth.ts";
 import type { RuntimeActionHttpResult } from "./api/runtime-api.ts";
@@ -20,7 +21,7 @@ import { compress } from "hono/compress";
 import { ConnectionError, defaultConnectionName } from "../connection-service.ts";
 import { ActionPolicyService, emptyPolicyRules } from "../core/action-policy.ts";
 import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
-import { optionalRecord, optionalString, requiredString } from "../core/cast.ts";
+import { optionalRecord, optionalString, requiredString, requiredStringArray } from "../core/cast.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
 import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowError, OAuthFlowService } from "../oauth/oauth-flow-service.ts";
@@ -813,7 +814,11 @@ export class ConnectServer {
       };
       this.options.logger?.info(logContext, "oauth authorization started");
 
-      const authorization = await this.options.oauthFlow.startAuthorization({ service, connectionName });
+      const authorization = await this.options.oauthFlow.startAuthorization({
+        service,
+        connectionName,
+        clientConfig: readOAuthClientConfigInput(body),
+      });
       const authorizationUrl = new URL(authorization.authorizationUrl);
       this.options.logger?.info(
         {
@@ -825,7 +830,11 @@ export class ConnectServer {
       );
       return context.json(authorization);
     } catch (error) {
-      if (error instanceof OAuthFlowError || error instanceof ConnectionError) {
+      if (
+        error instanceof OAuthClientConfigError ||
+        error instanceof OAuthFlowError ||
+        error instanceof ConnectionError
+      ) {
         this.options.logger?.warn(
           {
             errorCode: error.code,
@@ -835,7 +844,8 @@ export class ConnectServer {
           },
           "oauth authorization failed",
         );
-        return jsonError(context, error.code === "unknown_service" ? 404 : 400, error.code, error.message);
+        const status = error.code === "unknown_service" ? 404 : 400;
+        return jsonError(context, status, error.code, error.message);
       }
 
       throw error;
@@ -911,6 +921,7 @@ export class ConnectServer {
         service,
         clientId: optionalString(body.clientId) ?? "",
         clientSecret: optionalString(body.clientSecret) ?? "",
+        requestedScopes: readRequestedScopes(body),
         extra: optionalRecord(body.extra),
         secretExtra: optionalRecord(body.secretExtra),
       }),
@@ -1063,6 +1074,32 @@ export class ConnectServer {
       throw new Error("Runtime policy is unavailable.");
     }
   }
+}
+
+function readOAuthClientConfigInput(body: Record<string, unknown>): OAuthClientConfigInput | undefined {
+  const keys = ["clientId", "clientSecret", "requestedScopes", "extra", "secretExtra"];
+  if (!keys.some((key) => key in body)) {
+    return undefined;
+  }
+
+  return {
+    clientId: optionalString(body.clientId) ?? "",
+    clientSecret: optionalString(body.clientSecret) ?? "",
+    requestedScopes: readRequestedScopes(body),
+    extra: optionalRecord(body.extra),
+    secretExtra: optionalRecord(body.secretExtra),
+  };
+}
+
+function readRequestedScopes(body: Record<string, unknown>): string[] | undefined {
+  if (!("requestedScopes" in body)) {
+    return undefined;
+  }
+  return requiredStringArray(
+    body.requestedScopes,
+    "requestedScopes",
+    (message) => new HttpRequestError("invalid_input", `${message}.`),
+  );
 }
 
 interface ConnectionLogContext {

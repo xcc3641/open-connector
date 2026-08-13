@@ -46,7 +46,9 @@ export function createProviderFetch(options: ProviderFetchOptions = {}): Provide
     allowPrivateNetwork: options.allowPrivateNetwork,
     skipDnsValidation: options.skipDnsValidation,
     mapTransportError: (error) =>
-      error instanceof TypeError ? new ProviderRequestError(502, "provider network request failed") : error,
+      error instanceof TypeError
+        ? new ProviderRequestError(502, `provider network request failed${describeTransportCauseCode(error)}`)
+        : error,
     createError: (message) => new ProviderRequestError(502, message),
   });
 }
@@ -111,6 +113,7 @@ export interface ApiKeyProviderContext {
 export interface OAuthProviderContext {
   accessToken: string;
   tokenType?: string;
+  providerSecret?: Record<string, unknown>;
   fetcher: ProviderFetch;
   transitFiles?: TransitFileWriter;
   signal?: AbortSignal;
@@ -185,6 +188,8 @@ export interface ProviderProxyRequestCustomizationInput {
   url: URL;
   headers: Headers;
   credential?: ResolvedCredential;
+  /** Guarded fetcher used by the proxy for provider-owned auxiliary requests such as token exchange. */
+  fetcher: typeof fetch;
 }
 
 export interface ProviderProxyDefinition {
@@ -396,6 +401,7 @@ export function defineProviderProxy(input: ProviderProxyDefinition): ProviderPro
         url,
         headers,
         credential,
+        fetcher: egressFetch,
       });
 
       const init: RequestInit = {
@@ -426,6 +432,12 @@ export function defineProviderProxy(input: ProviderProxyDefinition): ProviderPro
       return toProviderProxyError(error, "provider request failed");
     }
   };
+}
+
+/** Match a normalized provider proxy endpoint against one or more path prefixes. */
+export function providerProxyEndpointPrefixes(...prefixes: string[]): (endpoint: string) => boolean {
+  return (endpoint) =>
+    prefixes.some((prefix) => endpoint === prefix || endpoint.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
 }
 
 export function defineBearerProviderProxy(input: BearerProviderProxyDefinition): ProviderProxyExecutor {
@@ -849,6 +861,7 @@ export function defineOAuthProviderExecutors(
       const providerContext: OAuthProviderContext = {
         accessToken: credential.accessToken,
         tokenType: credential.tokenType,
+        providerSecret: credential.providerSecret,
         fetcher,
         signal: context.signal,
       };
@@ -976,4 +989,19 @@ export async function requireBearerCredential(context: ExecutionContext, service
   }
 
   throw new ProviderRequestError(401, `Configure ${service} credentials first.`);
+}
+
+/**
+ * The platform error code behind a transport failure (`ENOTFOUND`,
+ * `ECONNREFUSED`, `CERT_HAS_EXPIRED`, ...), formatted for appending to a
+ * provider-visible message, or `""` when there is none.
+ *
+ * Only the code — never `cause.message`, which on undici embeds the target host
+ * (`getaddrinfo ENOTFOUND secret.internal`). That host is exactly what the
+ * transport-error mapping exists to keep out of provider-visible errors; the
+ * code is an enum-like token that identifies the failure without naming it.
+ */
+function describeTransportCauseCode(error: unknown): string {
+  const code = optionalString(optionalRecord(optionalRecord(error)?.cause)?.code);
+  return code ? ` (${code})` : "";
 }

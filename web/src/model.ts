@@ -11,6 +11,7 @@ export type AuthDefinition =
   | {
       type: "oauth2";
       scopes: string[];
+      tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
       clientConfigFields?: CredentialField[];
     };
 
@@ -22,6 +23,8 @@ export interface CredentialField {
   secret: boolean;
   placeholder?: string;
   description?: string;
+  location?: "extra" | "secretExtra";
+  defaultValue?: string;
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -81,9 +84,13 @@ export interface ConnectionRecord {
 export interface OAuthConfig {
   service: string;
   configured: boolean;
+  customClientAvailable?: boolean;
   clientId: string | null;
   expectedRedirectUri?: string;
   auth?: Extract<AuthDefinition, { type: "oauth2" }>;
+  requestedScopes?: string[] | null;
+  effectiveScopes?: string[];
+  extra?: Record<string, string>;
 }
 
 export interface RuntimeTokenSummary {
@@ -363,6 +370,21 @@ export function filterProviders(providers: ProviderDefinition[], query: string):
       .toLowerCase()
       .includes(normalized),
   );
+}
+
+export function filterProvidersByCategory(providers: ProviderDefinition[], category: string): ProviderDefinition[] {
+  if (category === "all") return providers;
+  return providers.filter((provider) => provider.categories.includes(category));
+}
+
+export function providerCategoryCounts(providers: ProviderDefinition[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const provider of providers) {
+    for (const category of provider.categories) {
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 export function sortProviders(

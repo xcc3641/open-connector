@@ -1,7 +1,6 @@
 import type { CredentialValidationResult, ResolvedCredential } from "../../core/types.ts";
 import type { N8nActionName } from "./actions.ts";
 
-import { isIP } from "node:net";
 import {
   compactObject,
   optionalBoolean,
@@ -493,11 +492,9 @@ export async function validateN8nCredential(
  * form and reject unsafe targets.
  *
  * `allowPrivateNetwork` defaults to the deployment opt-in and may be passed
- * explicitly to pin the policy. With it off, the historical public-only contract
- * applies: https only, plus n8n's public-hostname shape check. With it on, a
- * self-hosted instance may be a plain-HTTP LAN/overlay target, so the shape check
- * is skipped and the shared guard alone decides — loopback, link-local,
- * cloud-metadata, reserved, and IPv6 targets stay blocked either way.
+ * explicitly to pin the policy. With it off, public instances require HTTPS.
+ * With it on, a self-hosted instance may be a plain-HTTP LAN/overlay target.
+ * The shared guard decides which hosts are safe in both modes.
  */
 export function normalizeN8nInstanceUrl(
   input?: string,
@@ -816,12 +813,7 @@ function validatePublicN8nInstanceUrl(instanceUrl: string): void {
  * Apply the shared SSRF egress policy to one n8n URL and return the guard's
  * normalized URL.
  *
- * The public-hostname shape check below is a bespoke guard that predates the
- * deployment opt-in and rejects every private target on its own (IP literals,
- * `.local`/`.internal`, single-label hosts). It must therefore be skipped when
- * private-network access is enabled, or the opt-in would be inert; the shared
- * `assertPublicHttpUrl` policy still blocks loopback, link-local, cloud metadata,
- * reserved ranges, and IPv6 in both modes.
+ * The shared guard validates both the URL literal and its resolved addresses.
  */
 function assertN8nInstanceTarget(value: string, allowPrivateNetwork: boolean): URL {
   const parsed = assertPublicHttpUrl(value, {
@@ -830,9 +822,6 @@ function assertN8nInstanceTarget(value: string, allowPrivateNetwork: boolean): U
     allowPrivateNetwork,
   });
   assertN8nInstanceProtocol(parsed, allowPrivateNetwork);
-  if (!allowPrivateNetwork) {
-    validateN8nPublicHostnameShape(parsed.hostname);
-  }
   return parsed;
 }
 
@@ -846,29 +835,6 @@ function assertN8nInstanceProtocol(url: URL, allowPrivateNetwork: boolean): void
     return;
   }
   throw providerInputError("instanceUrl must use https");
-}
-
-function validateN8nPublicHostnameShape(hostname: string): void {
-  const normalizedHostname = normalizeUrlHostname(hostname);
-  if (
-    normalizedHostname === "localhost" ||
-    normalizedHostname.endsWith(".localhost") ||
-    normalizedHostname.endsWith(".local") ||
-    normalizedHostname.endsWith(".internal") ||
-    normalizedHostname === "0.0.0.0" ||
-    !normalizedHostname.includes(".") ||
-    isIP(normalizedHostname) !== 0
-  ) {
-    throw providerInputError("instanceUrl must use a public hostname");
-  }
-}
-
-function normalizeUrlHostname(hostname: string): string {
-  const lowerHostname = hostname.toLowerCase();
-  if (lowerHostname.startsWith("[") && lowerHostname.endsWith("]")) {
-    return lowerHostname.slice(1, -1);
-  }
-  return lowerHostname;
 }
 
 function providerInputError(message: string): ProviderRequestError {

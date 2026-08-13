@@ -1,4 +1,9 @@
-import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
+import type {
+  CredentialValidators,
+  ExecutionContext,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
 import type { OAuthProviderContext } from "../provider-runtime.ts";
 
 import {
@@ -9,14 +14,10 @@ import {
   pickOptionalString as pickNonEmptyString,
 } from "../../core/cast.ts";
 import { googleJsonRequest, googleRequest } from "../googledrive/runtime-shared.ts";
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
-import {
-  mintGoogleServiceAccountAccessToken,
-  parseGoogleServiceAccountJson,
-} from "./service-account.ts";
+import { defineProviderExecutors, defineProviderProxy, ProviderRequestError } from "../provider-runtime.ts";
+import { mintGoogleServiceAccountAccessToken, parseGoogleServiceAccountJson } from "./service-account.ts";
+
+const service = "google_search_console";
 
 export const searchConsoleApiBaseUrl = "https://www.googleapis.com/webmasters/v3";
 export const urlInspectionApiBaseUrl = "https://searchconsole.googleapis.com/v1";
@@ -77,7 +78,7 @@ export const googleSearchConsoleActionHandlers: Record<string, ActionHandler> = 
 };
 
 export const executors: ProviderExecutors = defineProviderExecutors<RuntimeDeps>({
-  service: "google_search_console",
+  service,
   handlers: googleSearchConsoleActionHandlers,
   async createContext(context: ExecutionContext, fetcher: typeof fetch): Promise<RuntimeDeps> {
     const accessToken = await resolveGoogleSearchConsoleAccessToken(context, fetcher);
@@ -470,3 +471,9 @@ async function urlInspectionJsonRequest<T>(
     body: input.body,
   });
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://www.googleapis.com/webmasters/v3",
+  auth: { type: "oauth_bearer" },
+});

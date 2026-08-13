@@ -15,26 +15,26 @@ Set `OOMOL_CONNECT_DATA_DIR` to use another directory. The Docker image defaults
 
 - `no_auth` providers store no secrets, but still need an explicit connection (activate) before they appear in MCP discovery or become executable.
 - `api_key` and `custom_credential` providers store their local secrets in SQLite.
-- `oauth2` providers use user-provided OAuth client configuration and a localhost callback URL.
+- `oauth2` providers use user-provided OAuth client configuration and a runtime callback URL.
 
 ## Encryption
 
-Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials, OAuth client configuration, and
-completed idempotent Action response payloads:
+Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials, OAuth client configuration,
+pending OAuth state, and completed idempotent Action response payloads:
 
 ```bash
 OOMOL_CONNECT_ENCRYPTION_KEY="replace-with-a-long-random-secret" npm run dev
 ```
 
-The runtime uses AES-256-GCM for provider credential records, OAuth client configuration, and the
-completed response payload retained for an idempotent HTTP Action retry. The raw `Idempotency-Key`
+The runtime uses AES-256-GCM for provider credential records, OAuth client configuration, pending
+OAuth state, and the completed response payload retained for an idempotent HTTP Action retry. The raw `Idempotency-Key`
 is never stored; the database contains its hash and a request fingerprint. Claim identifiers,
 state, timestamps, and expiry are also stored as unencrypted metadata. The encryption key is not
 stored by OpenConnector; if it is lost, encrypted records cannot be recovered.
 
 Without `OOMOL_CONNECT_ENCRYPTION_KEY`, the runtime stays usable for local development and prints a
-startup warning. In that mode, credentials, OAuth client configuration, and completed idempotent
-Action responses are stored as plaintext. Action responses may contain sensitive provider data, so
+startup warning. In that mode, credentials, OAuth client configuration, pending OAuth state, and
+completed idempotent Action responses are stored as plaintext. Action responses may contain sensitive provider data, so
 treat `connect.sqlite` or D1 as a sensitive data store even after a response is no longer eligible
 for replay.
 
@@ -153,6 +153,20 @@ curl -s -X PUT http://localhost:3000/api/oauth/configs/github \
   -d '{"clientId":"...","clientSecret":"..."}'
 ```
 
+By default, authorization requests include every scope declared by the provider. A deployment that
+needs a smaller permission surface can save `requestedScopes` with the OAuth client configuration:
+
+```bash
+curl -s -X PUT http://localhost:3000/api/oauth/configs/github \
+  -H 'content-type: application/json' \
+  -d '{"clientId":"...","clientSecret":"...","requestedScopes":["read:user"]}'
+```
+
+Every requested scope must come from the provider's declared `auth[].scopes`. The runtime rejects
+unknown scopes instead of silently expanding authorization. Omit `requestedScopes` to keep the
+provider defaults; when present, the array must contain at least one scope. Config summaries expose
+both `requestedScopes` and the resulting `effectiveScopes`.
+
 Some providers declare additional OAuth client fields in `auth[].clientConfigFields`; send those as
 `extra`.
 
@@ -166,6 +180,24 @@ curl -s -X POST http://localhost:3000/api/oauth/authorizations \
 
 Open the returned `authorizationUrl` in a browser. After the provider redirects to the local
 callback URL, the runtime stores the OAuth credential as the default connection.
+
+The console can start a connection-scoped OAuth flow with a custom app without changing the global
+config. Set `OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH` to `*` or a comma-separated provider list, and set
+`OOMOL_CONNECT_ENCRYPTION_KEY`. Then include `clientId` and, when required by the provider,
+`clientSecret` (plus provider-declared `extra` or `secretExtra` fields) in the existing OAuth
+authorization request:
+
+```bash
+curl -s -X POST http://localhost:3000/api/oauth/authorizations \
+  -H 'content-type: application/json' \
+  -d '{"service":"github","connectionName":"work","clientId":"...","clientSecret":"..."}'
+```
+
+Connection-scoped OAuth client requests may include the same validated `requestedScopes` subset.
+
+The callback URL is still the deployment's `/oauth/callback` (for example,
+`https://connect.example.com/oauth/callback`), and the connection keeps the supplied app values
+for future token refreshes. Omitting all client fields continues to use the global config.
 
 To store the OAuth credential as a named connection, include `connectionName` when starting
 authorization:

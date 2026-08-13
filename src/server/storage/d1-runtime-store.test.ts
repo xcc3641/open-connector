@@ -32,6 +32,7 @@ describe("D1RuntimeDatabase", () => {
       service: "gmail",
       clientId: "client-id",
       clientSecret: "client-secret",
+      requestedScopes: ["gmail.readonly"],
       extra: { tenant: "default" },
       secretExtra: {},
     });
@@ -49,6 +50,7 @@ describe("D1RuntimeDatabase", () => {
     await expect(database.oauthClientConfigStore.get("gmail")).resolves.toMatchObject({
       clientId: "client-id",
       clientSecret: "client-secret",
+      requestedScopes: ["gmail.readonly"],
       extra: { tenant: "default" },
     });
     await expect(database.connectionStore.list()).resolves.toMatchObject([
@@ -131,6 +133,30 @@ describe("D1RuntimeDatabase", () => {
       state: "state-1",
     });
     await expect(database.oauthStateStore.take("state-1")).resolves.toBeUndefined();
+  });
+
+  it("stores OAuth state through the secret codec", async () => {
+    const d1 = new SqliteD1Database();
+    const database = new D1RuntimeDatabase(d1, {
+      secretCodec: new AesGcmSecretCodec("local-test-key"),
+    });
+    await database.oauthStateStore.set({
+      service: "github",
+      state: "state-1",
+      createdAt: "2026-06-30T00:00:00.000Z",
+      clientConfig: {
+        service: "github",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        extra: {},
+        secretExtra: {},
+      },
+    });
+
+    expect(d1.value("oauth_states", "state", "state-1")).not.toContain("client-secret");
+    await expect(database.oauthStateStore.take("state-1")).resolves.toMatchObject({
+      clientConfig: { clientSecret: "client-secret" },
+    });
   });
 
   it("stores runtime token hashes and supports verification and revocation", async () => {
@@ -483,8 +509,8 @@ class SqliteD1Database implements D1DatabaseBinding {
   }
 
   value(
-    table: "connections" | "oauth_client_configs" | "idempotency_records",
-    keyColumn: "service" | "key_hash",
+    table: "connections" | "oauth_client_configs" | "oauth_states" | "idempotency_records",
+    keyColumn: "service" | "state" | "key_hash",
     key: string,
     valueColumn: "value" | "response_value" = "value",
   ): string {
