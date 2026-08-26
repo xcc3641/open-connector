@@ -1,8 +1,10 @@
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import type { Client } from "@modelcontextprotocol/client";
+
+import { ProtocolError } from "@modelcontextprotocol/client";
+import { SdkHttpError } from "@modelcontextprotocol/client";
+import { UnauthorizedError } from "@modelcontextprotocol/client";
 import { optionalString } from "../../core/cast.ts";
+import { withMcpClient } from "../mcp-client.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 export const mixpanelMcpEndpoint = "https://mcp.mixpanel.com/mcp";
@@ -52,6 +54,7 @@ export async function listMixpanelMcpTools(input: MixpanelMcpClientInput): Promi
       {},
       {
         timeout: mixpanelMcpRequestTimeoutMs,
+        signal: input.signal,
       },
     );
     return result.tools.map((tool) => ({
@@ -74,9 +77,9 @@ export async function callMixpanelMcpTool(
         name: input.toolName,
         arguments: input.arguments,
       },
-      undefined,
       {
         timeout: mixpanelMcpRequestTimeoutMs,
+        signal: input.signal,
       },
     );
     return normalizeMixpanelMcpToolResult(input.toolName, result);
@@ -92,50 +95,25 @@ async function withMixpanelMcpClient<T>(
   headers.set("authorization", `Bearer ${input.accessToken}`);
   headers.set("user-agent", providerUserAgent);
 
-  // StreamableHTTPClientTransport replaces requestInit.signal per request, so
-  // parent cancellation must close the client/transport explicitly.
   if (input.signal?.aborted) {
     throw new ProviderRequestError(499, "mixpanel MCP request was cancelled");
   }
 
-  const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-    fetch: input.fetcher,
-    requestInit: {
+  return withMcpClient(
+    {
+      endpoint: new URL(endpoint),
+      transport: "streamable_http",
+      fetcher: input.fetcher,
       headers,
+      signal: input.signal,
+      protocolVersion: "modern",
+      mapError: (error) =>
+        input.signal?.aborted
+          ? new ProviderRequestError(499, "mixpanel MCP request was cancelled")
+          : mapMixpanelMcpError(error),
     },
-  });
-  const client = new Client({
-    name: "oomol-connect-mixpanel",
-    version: "1.0.0",
-  });
-
-  let onAbort: (() => void) | undefined;
-  try {
-    if (input.signal) {
-      onAbort = () => {
-        void client.close().catch(() => undefined);
-        void transport.close().catch(() => undefined);
-      };
-      input.signal.addEventListener("abort", onAbort, { once: true });
-    }
-    await client.connect(transport, {
-      timeout: mixpanelMcpRequestTimeoutMs,
-    });
-    if (input.signal?.aborted) {
-      throw new ProviderRequestError(499, "mixpanel MCP request was cancelled");
-    }
-    return await run(client);
-  } catch (error) {
-    if (input.signal?.aborted) {
-      throw new ProviderRequestError(499, "mixpanel MCP request was cancelled");
-    }
-    throw mapMixpanelMcpError(error);
-  } finally {
-    if (input.signal && onAbort) {
-      input.signal.removeEventListener("abort", onAbort);
-    }
-    await client.close().catch(() => undefined);
-  }
+    run,
+  );
 }
 
 function normalizeMixpanelMcpToolResult(toolName: string, result: MixpanelMcpToolResult): unknown {
@@ -191,8 +169,8 @@ function mapMixpanelMcpError(error: unknown): ProviderRequestError {
   if (error instanceof UnauthorizedError) {
     return new ProviderRequestError(401, "mixpanel MCP token is invalid or expired", error);
   }
-  if (error instanceof StreamableHTTPError) {
-    const status = error.code;
+  if (error instanceof SdkHttpError) {
+    const status = error.status;
     return new ProviderRequestError(
       status === 401 || status === 403
         ? 401
@@ -205,10 +183,7 @@ function mapMixpanelMcpError(error: unknown): ProviderRequestError {
       error,
     );
   }
-  if (error instanceof McpError) {
-    if (error.code === ErrorCode.RequestTimeout) {
-      return new ProviderRequestError(504, "mixpanel MCP request timed out", error);
-    }
+  if (error instanceof ProtocolError) {
     return new ProviderRequestError(502, `mixpanel MCP request failed: ${error.message}`, error);
   }
   return new ProviderRequestError(

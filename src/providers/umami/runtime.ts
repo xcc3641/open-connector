@@ -1,4 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-runtime.ts";
 
 import { optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { assertPublicHttpUrl } from "../../core/request.ts";
@@ -39,7 +40,7 @@ interface ResolvedUmamiAuth {
   username?: string;
 }
 
-export const umamiActionHandlers: Record<string, UmamiActionHandler> = {
+export const umamiActionHandlers: ProviderActionHandlers<"umami", UmamiActionHandler> = {
   async get_current_user(_input, context) {
     const user = normalizeCurrentUserPayload(
       await requestUmamiJson({

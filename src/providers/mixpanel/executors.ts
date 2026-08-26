@@ -4,6 +4,7 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-runtime.ts";
 
 import { Buffer } from "node:buffer";
 import {
@@ -79,7 +80,7 @@ interface MixpanelRequestInput {
   notFoundAsInvalidInput?: boolean;
 }
 
-export const mixpanelActionHandlers: Record<string, MixpanelActionHandler> = {
+export const mixpanelActionHandlers: ProviderActionHandlers<"mixpanel", MixpanelActionHandler> = {
   list_mcp_tools(_input, context) {
     return listMcpTools(context);
   },
