@@ -35,12 +35,40 @@ const profileSchema = s.looseObject("The detailed Bluesky profile object returne
   postsCount: s.integer("The number of posts by the actor."),
 });
 
-const postViewSchema = s.looseObject("The raw Bluesky post view returned by a feed or search.", {
+const strongRefSchema = s.object("A Bluesky strong reference to a post.", {
   uri: postUriSchema,
   cid: cidSchema,
-  author: s.looseObject("The Bluesky author view for the post."),
-  record: compactRecordSchema,
-  indexedAt: s.dateTime("The server timestamp when the post was indexed."),
+});
+
+const labelSchema = s.looseObject("A Bluesky moderation label.");
+const labelsSchema = s.array("Bluesky moderation labels.", labelSchema);
+const postViewerSchema = s.looseObject("Authenticated viewer state for the post.", {
+  replyDisabled: s.boolean("Whether the authenticated account is prevented from replying."),
+});
+const postRecordSchema = s.looseObject("The Bluesky post record.", {
+  text: s.string("The post text."),
+  createdAt: s.string("The client-declared post creation timestamp."),
+  langs: s.array("Human language codes for the post text.", s.string("A language code.")),
+  reply: s.looseObject("Reply references for this post.", {
+    root: strongRefSchema,
+    parent: strongRefSchema,
+  }),
+});
+const postViewSchema = s.looseObject("The complete Bluesky post view returned by AppView.", {
+  uri: postUriSchema,
+  cid: cidSchema,
+  indexedAt: s.string("The server timestamp when the post was indexed."),
+  replyCount: s.integer("The number of replies to the post."),
+  author: s.looseObject("The Bluesky author view for the post.", {
+    did: s.string("The decentralized identifier for the author."),
+    handle: s.string("The current handle for the author."),
+    displayName: s.string("The display name for the author."),
+    labels: labelsSchema,
+  }),
+  record: postRecordSchema,
+  labels: labelsSchema,
+  threadgate: s.looseObject("Reply restrictions and allow rules for the post."),
+  viewer: postViewerSchema,
 });
 
 const feedViewPostSchema = s.object(
@@ -53,11 +81,6 @@ const feedViewPostSchema = s.object(
   },
   { required: ["post"], optional: ["reply", "reason", "feedContext"] },
 );
-
-const strongRefSchema = s.object("A Bluesky strong reference to a post.", {
-  uri: postUriSchema,
-  cid: cidSchema,
-});
 
 const textFacetSchema = s.looseObject("A Bluesky rich text facet object.");
 const selfLabelsSchema = s.looseObject("A Bluesky self-label object.");
@@ -72,6 +95,43 @@ export const blueskyActions: ProviderActionDefinition[] = [
     }),
     outputSchema: s.object("The Bluesky profile response.", {
       profile: profileSchema,
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "get_posts",
+    description:
+      "Fetch up to 25 Bluesky posts by AT URI with authenticated viewer reply permissions. Missing posts are omitted when deleted or invisible.",
+    requiredScopes: [],
+    inputSchema: s.object(
+      "Parameters for retrieving Bluesky posts.",
+      {
+        uris: s.array("AT URIs for the posts to retrieve.", postUriSchema, {
+          minItems: 1,
+          maxItems: 25,
+        }),
+      },
+      { required: ["uris"] },
+    ),
+    outputSchema: s.object("The Bluesky getPosts response. Missing requested posts remain omitted.", {
+      posts: s.array("Posts returned by Bluesky.", postViewSchema),
+    }),
+  }),
+  defineProviderAction(service, {
+    name: "get_post_thread",
+    description:
+      "Fetch a Bluesky post thread, including bounded replies and ancestors, with authenticated viewer state.",
+    requiredScopes: [],
+    inputSchema: s.object(
+      "Parameters for retrieving a Bluesky post thread.",
+      {
+        uri: postUriSchema,
+        depth: s.integer("Maximum reply depth to return.", { minimum: 0, maximum: 1000 }),
+        parentHeight: s.integer("Maximum number of parent posts to return.", { minimum: 0, maximum: 1000 }),
+      },
+      { optional: ["depth", "parentHeight"] },
+    ),
+    outputSchema: s.object("The Bluesky post thread response.", {
+      thread: s.looseObject("The thread tree returned by Bluesky AppView."),
     }),
   }),
   defineProviderAction(service, {

@@ -61,6 +61,56 @@ export const blueskyActionHandlers: ProviderActionHandlers<"bluesky", BlueskyAct
       profile: requireRecord(payload, "Bluesky profile response"),
     };
   },
+  async get_posts(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/app.bsky.feed.getPosts",
+      method: "GET",
+      query: {
+        uris: requireInputStringArray(input.uris, "uris", 25),
+      },
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky getPosts response");
+    return {
+      posts: requireArray(record.posts, "posts").map((post) => requireRecord(post, "Bluesky post")),
+    };
+  },
+  async get_post_thread(input, context) {
+    const session = await createBlueskySession({
+      identifier: context.handle,
+      appPassword: context.apiKey,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const payload = await requestBlueskyJson({
+      path: "/xrpc/app.bsky.feed.getPostThread",
+      method: "GET",
+      query: compactObject({
+        uri: requireInputString(input.uri, "uri"),
+        depth: optionalBoundedInteger(input.depth, "depth", 0, 1000),
+        parentHeight: optionalBoundedInteger(input.parentHeight, "parentHeight", 0, 1000),
+      }),
+      accessJwt: session.accessJwt,
+      fetcher: context.fetcher,
+      signal: context.signal,
+      phase: "execute",
+    });
+    const record = requireRecord(payload, "Bluesky getPostThread response");
+    return {
+      thread: requireRecord(record.thread, "Bluesky post thread"),
+    };
+  },
   async search_posts(input, context) {
     const session = await createBlueskySession({
       identifier: context.handle,
@@ -664,6 +714,31 @@ function requireInputString(value: unknown, fieldName: string): string {
     throw new ProviderRequestError(400, `${fieldName} is required`);
   }
   return text;
+}
+
+function requireInputStringArray(value: unknown, fieldName: string, maxItems: number): string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ProviderRequestError(400, `${fieldName} must be a non-empty array`);
+  }
+  if (value.length > maxItems) {
+    throw new ProviderRequestError(400, `${fieldName} must contain at most ${maxItems} items`);
+  }
+  return value.map((item) => requireInputString(item, `${fieldName} item`));
+}
+
+function optionalBoundedInteger(
+  value: unknown,
+  fieldName: string,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+    throw new ProviderRequestError(400, `${fieldName} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value as number;
 }
 
 function requireResponseString(value: unknown, fieldName: string): string {
