@@ -106,7 +106,7 @@ async function withMixpanelMcpClient<T>(
       fetcher: input.fetcher,
       headers,
       signal: input.signal,
-      protocolVersion: "modern",
+      protocolVersion: "legacy",
       mapError: (error) =>
         input.signal?.aborted
           ? new ProviderRequestError(499, "mixpanel MCP request was cancelled")
