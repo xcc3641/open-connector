@@ -50,6 +50,7 @@ describe("SqliteRuntimeDatabase", () => {
       "0009_runtime_token_proxy.sql",
       "0010_connection_revision.sql",
       "0011_runtime_token_connection_scope.sql",
+      "0012_marketplace.sql",
     ];
     expect(entries.filter((entry) => entry.message === "sqlite migration started")).toEqual(
       migrations.map((migration) => ({ fields: { migration }, message: "sqlite migration started" })),
@@ -157,6 +158,26 @@ describe("SqliteRuntimeDatabase", () => {
       ],
     });
     second.close();
+  });
+
+  it("deletes OAuth states created before a cutoff", async () => {
+    const database = new SqliteRuntimeDatabase(await createDatabasePath());
+    await database.oauthStateStore.set({
+      service: "gmail",
+      state: "expired",
+      createdAt: "2026-06-30T00:00:00.000Z",
+    });
+    await database.oauthStateStore.set({
+      service: "gmail",
+      state: "current",
+      createdAt: "2026-06-30T00:00:01.000Z",
+    });
+
+    await database.oauthStateStore.deleteCreatedBefore("2026-06-30T00:00:01.000Z");
+
+    await expect(database.oauthStateStore.take("expired")).resolves.toBeUndefined();
+    await expect(database.oauthStateStore.take("current")).resolves.toMatchObject({ state: "current" });
+    database.close();
   });
 
   it("preserves connection identity and rejects stale credential revisions", async () => {

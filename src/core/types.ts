@@ -174,6 +174,8 @@ export type OAuth2AuthDefinition = {
    * and refresh-token requests (for example RFC 8707 `resource`).
    */
   tokenParams?: Record<string, string>;
+  /** Provider callback query parameters forwarded to token exchange and later token refresh. */
+  tokenRequestCallbackParameters?: string[];
   /** Provider-specific OAuth authorization request field names. */
   authorizationRequestFields?: {
     clientId?: string | false;
@@ -320,13 +322,7 @@ export interface TransitFileRead {
 
 export interface TransitFileStore {
   readonly maxBytes: number;
-  create(file: File): Promise<{
-    fileId: string;
-    downloadUrl: string;
-    sizeBytes: number;
-    name: string;
-    mimeType: string;
-  }>;
+  create(file: File): Promise<TransitFileUpload>;
   read(fileId: string): Promise<TransitFileRead>;
   delete(fileId: string): Promise<boolean>;
 }

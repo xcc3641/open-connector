@@ -43,7 +43,7 @@ describe("cloudflare worker", () => {
       },
     };
     const env: CloudflareEnv = {
-      DB: new UnusedD1Database(),
+      DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: new UnusedR2Bucket(),
       ASSETS: assets,
     };
@@ -128,7 +128,7 @@ describe("cloudflare worker", () => {
     // A distinct host keeps this out of the R2 test's cached app instance.
     const origin = "https://kv.example.com";
     const env: CloudflareEnv = {
-      DB: new UnusedD1Database(),
+      DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: namespace,
       TRANSIT_FILES_BACKEND: "kv",
       ASSETS: memoryAssets(chunkedCatalog()),
@@ -163,7 +163,7 @@ describe("cloudflare worker", () => {
     // A distinct host keeps this out of the other tests' cached app instances.
     const origin = "https://r2.example.com";
     const env: CloudflareEnv = {
-      DB: new UnusedD1Database(),
+      DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: bucket,
       // TRANSIT_FILES_BACKEND intentionally omitted -> must fall back to R2.
       ASSETS: memoryAssets(chunkedCatalog()),
@@ -196,7 +196,7 @@ describe("cloudflare worker", () => {
 
 function createEnv(): CloudflareEnv {
   return {
-    DB: new MemoryD1Database(),
+    DB: new EmptyMarketplaceD1Database(),
     TRANSIT_FILES: new UnusedR2Bucket(),
     ASSETS: memoryAssets(chunkedCatalog()),
   };
@@ -230,9 +230,14 @@ function memoryAssets(files: Record<string, unknown>): AssetsBinding {
   };
 }
 
-class UnusedD1Database implements D1DatabaseBinding {
+class EmptyMarketplaceD1Database implements D1DatabaseBinding {
+  private readonly connections = new MemoryD1Database();
+
   prepare(query: string): D1PreparedStatementBinding {
-    throw new Error(`Unexpected D1 query: ${query}`);
+    if (query === "select value from marketplace_config where id = 1") {
+      return new EmptyMarketplaceConfigStatement();
+    }
+    return this.connections.prepare(query);
   }
 }
 
@@ -349,6 +354,24 @@ class MemoryD1Statement implements D1PreparedStatementBinding {
       return { success: true, meta: { changes: existed ? 1 : 0 } };
     }
     throw new Error(`Unexpected D1 query: ${this.query}`);
+  }
+}
+
+class EmptyMarketplaceConfigStatement implements D1PreparedStatementBinding {
+  bind(): D1PreparedStatementBinding {
+    throw new Error("Unexpected D1 bind");
+  }
+
+  async first<T = Record<string, unknown>>(): Promise<T | null> {
+    return null;
+  }
+
+  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
+    throw new Error("Unexpected D1 all");
+  }
+
+  async run(): Promise<{ success: boolean; meta: { changes?: number } }> {
+    throw new Error("Unexpected D1 run");
   }
 }
 

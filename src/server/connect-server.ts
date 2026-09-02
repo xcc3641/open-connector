@@ -1,12 +1,14 @@
 import type { CatalogStore, RuntimeActionDefinition } from "../catalog-store.ts";
 import type { ConnectionService, ConnectionSummary } from "../connection-service.ts";
 import type { ActionPolicySnapshot } from "../core/action-policy.ts";
-import type { ActionSearchIndexProvider, ActionSearchResult } from "../core/action-search.ts";
+import type { ActionSearchDocument, ActionSearchIndexProvider } from "../core/action-search.ts";
+import type { TransitFileUpload } from "../core/types.ts";
+import type { MarketplaceConfigInput, MarketplaceService } from "../marketplace/marketplace-service.ts";
 import type { OAuthClientConfigInput } from "../oauth/oauth-client-config-service.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { LocalAuthOptions } from "./api/auth.ts";
 import type { RuntimeActionHttpResult } from "./api/runtime-api.ts";
-import type { ITransitFileService, TransitFileUpload } from "./files/transit-file-store.ts";
+import type { ITransitFileService } from "./files/transit-file-store.ts";
 import type { Logger } from "./logger.ts";
 import type { IIdempotencyStore } from "./storage/idempotency-store.ts";
 import type { IRuntimePolicyStore } from "./storage/runtime-policy-store.ts";
@@ -22,6 +24,7 @@ import { ConnectionError, defaultConnectionName } from "../connection-service.ts
 import { ActionPolicyService, emptyPolicyRules } from "../core/action-policy.ts";
 import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
 import { optionalRecord, optionalString, requiredString, requiredStringArray } from "../core/cast.ts";
+import { MarketplaceError } from "../marketplace/marketplace-service.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
 import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowError, OAuthFlowService } from "../oauth/oauth-flow-service.ts";
@@ -53,7 +56,7 @@ import {
   writeRuntimeFailure,
   writeRuntimeSuccess,
 } from "./api/runtime-api.ts";
-import { createTransitFileResponse, TransitFileError } from "./files/transit-file-store.ts";
+import { TransitFileError } from "./files/transit-file-store.ts";
 import { ProxyRunner } from "./proxy/proxy-runner.ts";
 import { decodeRunLogCursor } from "./storage/runtime-store.ts";
 import { summarizeRuntimeToken } from "./storage/runtime-token-service.ts";
@@ -72,7 +75,6 @@ export interface IConnectServerOptions {
   idempotency: IIdempotencyStore;
   transitFiles: ITransitFileService;
   uploadTransitFile?: (request: Request) => Promise<TransitFileUpload>;
-  staticRoot?: string;
   auth?: LocalAuthOptions;
   actionPolicy?: ActionPolicyService;
   runtimePolicyStore: IRuntimePolicyStore;
@@ -80,6 +82,7 @@ export interface IConnectServerOptions {
   registerStaticRoutes?: (app: Hono) => void;
   logger?: Logger;
   compressApiResponses?: boolean;
+  marketplace?: MarketplaceService;
 }
 
 /**
@@ -101,7 +104,6 @@ export class ConnectServer {
       catalog: options.catalog,
       providerLoader: options.providerLoader,
       connections: options.connections,
-      actionPolicy: this.actionPolicy,
       logger: options.logger,
     });
   }
@@ -132,6 +134,18 @@ export class ConnectServer {
       app.use("/api/*", compress());
     }
     app.use("*", createLocalAuthMiddleware(auth));
+    if (this.options.marketplace) {
+      app.get("/api/marketplace", (context) => context.json(this.options.marketplace!.getState()));
+      app.put("/api/marketplace", (context) => this.configureMarketplace(context));
+      app.patch("/api/marketplace", (context) => this.configureMarketplace(context));
+      app.delete("/api/marketplace", (context) => this.deleteMarketplace(context));
+      app.get("/api/provider-preferences", async (context) =>
+        context.json(await this.options.marketplace!.listProviderPreferences()),
+      );
+      app.patch("/api/provider-preferences/:service", (context) =>
+        this.updateProviderPreference(context, context.req.param("service")),
+      );
+    }
     app.get("/v1/health", (context) => writeRuntimeSuccess(context, { ok: true, runtime: "oomol-connect" }));
     app.get("/v1/providers", (context) => this.listRuntimeProviders(context));
     app.get("/v1/actions", (context) => this.listRuntimeActions(context));
@@ -250,6 +264,41 @@ export class ConnectServer {
     return context.body(providerSummariesJson, 200, { "Content-Type": "application/json" });
   }
 
+  private async configureMarketplace(context: Context): Promise<Response> {
+    const body = await readJsonBody(context);
+    const input: MarketplaceConfigInput = {
+      discoveryUrl: optionalString(body.discoveryUrl),
+      apiKey: optionalString(body.apiKey),
+      enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+    };
+    try {
+      return context.json(await this.options.marketplace!.configure(input));
+    } catch (error) {
+      if (error instanceof MarketplaceError) {
+        return jsonError(context, error.status === 404 ? 404 : 400, error.code, error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async deleteMarketplace(context: Context): Promise<Response> {
+    await this.options.marketplace!.remove();
+    return context.json(this.options.marketplace!.getState());
+  }
+
+  private async updateProviderPreference(context: Context, service: string): Promise<Response> {
+    const body = await readJsonBody(context);
+    if (typeof body.enabled !== "boolean") {
+      return jsonError(context, 400, "invalid_input", "enabled must be a boolean.");
+    }
+    try {
+      return context.json(await this.options.marketplace!.setProviderEnabled(service, body.enabled));
+    } catch (error) {
+      if (error instanceof MarketplaceError) return jsonError(context, 404, error.code, error.message);
+      throw error;
+    }
+  }
+
   private getProvider(context: Context, service: string): Response {
     const provider = this.options.catalog.providers.find((provider) => provider.service === service);
     if (!provider) {
@@ -279,12 +328,7 @@ export class ConnectServer {
 
   private async getTransitFile(context: Context, fileId: string): Promise<Response> {
     try {
-      if (this.options.transitFiles.response) {
-        return await this.options.transitFiles.response(fileId);
-      }
-
-      const file = await this.options.transitFiles.read(fileId);
-      return createTransitFileResponse(file);
+      return await this.options.transitFiles.response(fileId);
     } catch (error) {
       return this.handleTransitFileError(context, error);
     }
@@ -357,7 +401,6 @@ export class ConnectServer {
       return context.text(
         renderActionMarkdown(action, {
           connection: await this.options.connections.getConnectionSummary(action.service, readConnectionName(context)),
-          providerPermissions: action.providerPermissions,
           policy,
         }),
         200,
@@ -434,7 +477,7 @@ export class ConnectServer {
     return writeRuntimeSuccess(context, await this.serializeSearchResults(results));
   }
 
-  private async serializeSearchResults(results: ActionSearchResult[]): Promise<RuntimeActionSearchResult[]> {
+  private async serializeSearchResults(results: ActionSearchDocument[]): Promise<RuntimeActionSearchResult[]> {
     const authenticated = new Set(
       await this.options.connections.listAuthenticatedServices([...new Set(results.map((result) => result.service))]),
     );
@@ -750,10 +793,8 @@ export class ConnectServer {
       () =>
         createMcpServer({
           catalog: this.options.catalog,
-          providerLoader: this.options.providerLoader,
           connections: this.options.connections,
           actions: this.options.actions,
-          actionPolicy: this.actionPolicy,
           actionSearch: this.actionSearch,
           getPolicySnapshot: () => this.getPolicySnapshot(context),
           runtimeGrant: readRuntimeGrant(context),
@@ -854,7 +895,7 @@ export class ConnectServer {
   }
 
   private async disconnect(context: Context, service: string): Promise<Response> {
-    const body = context.req.header("content-type")?.includes("application/json") ? await readJsonBody(context) : {};
+    const body = await readJsonBody(context);
     const connectionName = readConnectionName(context, body);
     const logContext: ConnectionLogContext = {
       operation: "disconnect",
@@ -1043,6 +1084,7 @@ export class ConnectServer {
         await this.options.oauthFlow.completeAuthorization({
           state,
           code,
+          callbackParameters: Object.fromEntries(new URL(context.req.url).searchParams),
           signal: context.req.raw.signal,
         })
       ).service;
@@ -1252,7 +1294,7 @@ interface RuntimeActionSearchResult {
 }
 
 function serializeActionSearchResult(
-  result: ActionSearchResult,
+  result: ActionSearchDocument,
   action: RuntimeActionDefinition,
   authenticated: boolean,
 ): RuntimeActionSearchResult {

@@ -1,5 +1,6 @@
 import type { IConnectionStore, StoredConnection } from "./connection-service.ts";
 import type { ActionExecutor, CredentialValidators, ProviderDefinition, ResolvedCredential } from "./core/types.ts";
+import type { MarketplaceService } from "./marketplace/marketplace-service.ts";
 import type { OAuthClientConfig } from "./oauth/oauth-client-config-service.ts";
 import type { IProviderLoader } from "./providers/provider-loader.ts";
 
@@ -190,6 +191,83 @@ describe("ConnectionService", () => {
     });
     await expect(service.listConnections()).resolves.toEqual([]);
     await expect(service.getCredential("hackernews")).resolves.toBeUndefined();
+  });
+
+  // Stored connections stay first; Marketplace is appended and is only default
+  // when the provider has no stored connection. Unactivated no-auth apps stay hidden.
+  it("orders Marketplace entries after stored and no_auth connections", async () => {
+    const services = ["uptimerobot", "hackernews", "database"];
+    const marketplace = {
+      getSnapshot: () => ({
+        definition: { id: "community", name: "Community", pricing: { model: "included" } },
+        actionsByService: new Map(services.map((service) => [service, new Set([`${service}.example`])])),
+      }),
+      listProviderPreferences: async () =>
+        services.map((service) => ({
+          service,
+          enabled: true,
+          createdAt: "2026-08-27T00:00:00.000Z",
+          updatedAt: "2026-08-27T00:00:00.000Z",
+        })),
+    } as unknown as MarketplaceService;
+    const service = new ConnectionService({
+      catalog: createCatalogStore([apiKeyProvider, hackernewsProvider, customCredentialProvider]),
+      marketplace,
+      providerLoader: new FakeProviderLoader(),
+      store: new MemoryConnectionStore(),
+    });
+    await service.connectWithApiKey("uptimerobot", {
+      values: {
+        apiKey: "test-key",
+        accountId: "account-1",
+      },
+    });
+
+    await service.connectWithoutAuth("hackernews");
+
+    const summaries = await service.listConnections();
+    expect(summaries.map((summary) => [summary.service, summary.authType, summary.default])).toEqual([
+      ["database", "marketplace", true],
+      ["hackernews", "no_auth", true],
+      ["hackernews", "marketplace", false],
+      ["uptimerobot", "api_key", true],
+      ["uptimerobot", "marketplace", false],
+    ]);
+    await expect(service.listConnectionsByService("uptimerobot")).resolves.toEqual(
+      summaries.filter((summary) => summary.service === "uptimerobot"),
+    );
+  });
+
+  it("derives an explicit Marketplace connection name from discovery metadata", async () => {
+    const marketplace = {
+      getSnapshot: () => ({
+        definition: { id: "community" },
+        actionsByService: new Map([["uptimerobot", new Set(["uptimerobot.status"])]]),
+      }),
+      listProviderPreferences: async () => [
+        {
+          service: "uptimerobot",
+          enabled: true,
+          createdAt: "2026-08-27T00:00:00.000Z",
+          updatedAt: "2026-08-27T00:00:00.000Z",
+        },
+      ],
+    } as unknown as MarketplaceService;
+    const service = new ConnectionService({
+      catalog: createCatalogStore([apiKeyProvider]),
+      marketplace,
+      providerLoader: new FakeProviderLoader(),
+      store: new MemoryConnectionStore(),
+    });
+
+    await expect(service.getConnectionSummary("uptimerobot", "marketplace_community")).resolves.toMatchObject({
+      id: "marketplace:community:uptimerobot",
+      connectionName: "marketplace_community",
+      authType: "marketplace",
+    });
+    await expect(service.getConnectionSummary("uptimerobot", "marketplace_oomol")).rejects.toMatchObject({
+      code: "connection_not_found",
+    });
   });
 
   it("stores API key credentials as resolved credentials", async () => {

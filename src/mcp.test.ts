@@ -3,6 +3,7 @@ import type { ActionPolicySnapshot } from "./core/action-policy.ts";
 import type { ActionDefinition, ActionExecutor, ProviderDefinition, ResolvedCredential } from "./core/types.ts";
 import type { IProviderLoader } from "./providers/provider-loader.ts";
 import type { IRunLogStore, RunLog, RunLogPage } from "./server/storage/runtime-store.ts";
+import type { RuntimeGrant } from "./server/storage/runtime-token-service.ts";
 
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/client";
@@ -10,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCatalogStore } from "./catalog-store.ts";
 import { ConnectionService } from "./connection-service.ts";
 import { ActionPolicyService, emptyPolicyRules } from "./core/action-policy.ts";
-import { createMcpServer } from "./mcp.ts";
+import { createMcpServer, listMcpToolSummaries } from "./mcp.ts";
 import { ActionRunner } from "./server/actions/action-runner.ts";
 
 const echoAction: ActionDefinition = {
@@ -115,6 +116,16 @@ describe("MCP server", () => {
         "get_action_guide",
         "execute_action",
       ]);
+    });
+  });
+
+  it("projects the tool summaries from the registered tools", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.listTools();
+
+      expect(listMcpToolSummaries()).toEqual(
+        result.tools.map(({ name, title, description }) => ({ name, title, description })),
+      );
     });
   });
 
@@ -732,20 +743,23 @@ describe("MCP server", () => {
   });
 });
 
+interface McpPolicyOptions {
+  getPolicySnapshot?(): Promise<ActionPolicySnapshot>;
+  runtimeGrant?: RuntimeGrant;
+  activateNoAuth?: boolean;
+}
+
+/** Default to an empty deployment policy scoped to the runtime grant, the way the server does without a store. */
+function policySnapshotFor(policy: McpPolicyOptions): () => Promise<ActionPolicySnapshot> {
+  return (
+    policy.getPolicySnapshot ??
+    (async () => new ActionPolicyService().createSnapshot(emptyPolicyRules(), policy.runtimeGrant))
+  );
+}
+
 async function withMcpClient(
   run: (client: Client) => Promise<void>,
-  options: {
-    getPolicySnapshot?(): Promise<ActionPolicySnapshot>;
-    runtimeGrant?: {
-      tokenId: string;
-      allowedActions: string[];
-      blockedActions: string[];
-      allowedProxies: string[];
-      allowedConnections?: string[];
-    };
-    activateNoAuth?: boolean;
-    signal?: AbortSignal;
-  } = {},
+  options: McpPolicyOptions & { signal?: AbortSignal } = {},
 ): Promise<void> {
   const { activateNoAuth = true, ...policy } = options;
   const catalog = createCatalogStore([exampleProvider, lockedProvider], {
@@ -768,10 +782,10 @@ async function withMcpClient(
   });
   const server = createMcpServer({
     catalog,
-    providerLoader,
     connections,
     actions,
     ...policy,
+    getPolicySnapshot: policySnapshotFor(policy),
   });
   const client = new Client({ name: "mcp-test", version: "0.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -788,16 +802,7 @@ async function withMcpClient(
 async function withAuthenticatedMcpClient(
   run: (client: Client) => Promise<void>,
   runs = new MemoryRunLogStore(),
-  policy: {
-    getPolicySnapshot?(): Promise<ActionPolicySnapshot>;
-    runtimeGrant?: {
-      tokenId: string;
-      allowedActions: string[];
-      blockedActions: string[];
-      allowedProxies: string[];
-      allowedConnections?: string[];
-    };
-  } = {},
+  policy: McpPolicyOptions = {},
 ): Promise<void> {
   const catalog = createCatalogStore([authenticatedProvider], {
     executableActionIds: ["example_auth.get_account"],
@@ -824,7 +829,13 @@ async function withAuthenticatedMcpClient(
     ]),
   });
   const actions = new ActionRunner({ catalog, providerLoader, connections, runs });
-  const server = createMcpServer({ catalog, providerLoader, connections, actions, ...policy });
+  const server = createMcpServer({
+    catalog,
+    connections,
+    actions,
+    ...policy,
+    getPolicySnapshot: policySnapshotFor(policy),
+  });
   const client = new Client({ name: "mcp-test", version: "0.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 

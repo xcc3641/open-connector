@@ -236,7 +236,7 @@ export function searchActions(
   index: MiniSearch<ActionSearchDocument>,
   query: string,
   options: ActionSearchOptions = {},
-): ActionSearchResult[] {
+): ActionSearchDocument[] {
   const {
     limit = DEFAULT_ACTION_SEARCH_LIMIT,
     fuzzy = DEFAULT_ACTION_SEARCH_FUZZY,
@@ -278,7 +278,7 @@ function searchProcessTerm(term: string): string | string[] | null {
   return synonyms ? [...synonyms] : normalized;
 }
 
-function toActionSearchResult(result: SearchResult): ActionSearchResult {
+function toActionSearchResult(result: SearchResult): ActionSearchDocument {
   return {
     id: result.id as string,
     service: result.service as string,

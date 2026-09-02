@@ -9,8 +9,10 @@ import {
   defineOAuthProviderExecutors,
   defineProviderExecutors,
   defineProviderProxy,
+  isAbortSignalError,
   mapProviderActionSources,
   providerFetch,
+  ProviderRequestError,
   readProviderJson,
   toProviderExecutionError,
 } from "./provider-runtime.ts";
@@ -20,7 +22,31 @@ afterEach(() => {
   setPrivateNetworkAccessAllowed(false);
 });
 
+describe("ProviderRequestError", () => {
+  it("keeps provider error codes on the shared request error", () => {
+    const error = new ProviderRequestError(429, "Provider quota exhausted", { retryAfter: 30 }, "rate_limited");
+
+    expect(error).toMatchObject({
+      status: 429,
+      message: "Provider quota exhausted",
+      details: { retryAfter: 30 },
+      code: "rate_limited",
+    });
+  });
+});
+
 describe("toProviderExecutionError", () => {
+  it("prefers an explicit provider error code over status inference", () => {
+    expect(
+      toProviderExecutionError(
+        new ProviderRequestError(409, "Still processing", undefined, "request_in_progress"),
+        "failed",
+      ),
+    ).toMatchObject({
+      error: { code: "request_in_progress" },
+    });
+  });
+
   it("maps unknown exceptions to a generic internal error", () => {
     expect(toProviderExecutionError(new Error("secret provider response"), "Provider request failed.")).toEqual({
       ok: false,
@@ -137,6 +163,21 @@ describe("createProviderTimeout", () => {
   });
 });
 
+describe("isAbortSignalError", () => {
+  it("accepts both AbortError rejections and the signal's own abort reason", () => {
+    expect(isAbortSignalError(AbortSignal.abort(), new DOMException("aborted", "AbortError"))).toBe(true);
+
+    const cancelled = AbortSignal.abort(new Error("cancelled"));
+    expect(isAbortSignalError(cancelled, cancelled.reason)).toBe(true);
+  });
+
+  it("rejects errors that did not come from the aborted signal", () => {
+    const pending = new AbortController().signal;
+    expect(isAbortSignalError(pending, new DOMException("aborted", "AbortError"))).toBe(false);
+    expect(isAbortSignalError(AbortSignal.abort(new Error("cancelled")), new Error("connection reset"))).toBe(false);
+  });
+});
+
 describe("createProviderProxyUrl", () => {
   it("rejects endpoints that can escape the provider origin", () => {
     for (const endpoint of [
@@ -154,6 +195,18 @@ describe("createProviderProxyUrl", () => {
   it("joins normal endpoints below an API path prefix", () => {
     expect(createProviderProxyUrl("https://api.example.com/v1/", "/items").toString()).toBe(
       "https://api.example.com/v1/items",
+    );
+  });
+
+  it("keeps a colon-suffixed literal segment below the base instead of parsing it as a scheme", () => {
+    expect(createProviderProxyUrl("https://api.example.com/v1/", "/groups:batchDelete").toString()).toBe(
+      "https://api.example.com/v1/groups:batchDelete",
+    );
+  });
+
+  it("keeps a scheme-like segment with an authority below the base instead of switching origin", () => {
+    expect(createProviderProxyUrl("https://api.example.com/v1/", "/custom://evil.example/x").toString()).toBe(
+      "https://api.example.com/v1/custom://evil.example/x",
     );
   });
 });

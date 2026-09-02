@@ -8,13 +8,13 @@ import type {
   ProviderDefinition,
   ProviderProxyExecutor,
   ResolvedCredential,
+  TransitFileUpload,
 } from "../core/types.ts";
 import type { IOAuthClientConfigStore, OAuthClientConfig } from "../oauth/oauth-client-config-service.ts";
 import type { IOAuthStateStore, OAuthAuthorizationState } from "../oauth/oauth-flow-service.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { RuntimeActionHttpResult } from "./api/runtime-api.ts";
 import type { RuntimeJwtVerifier } from "./api/runtime-jwt.ts";
-import type { TransitFileUpload } from "./files/transit-file-store.ts";
 import type { Logger } from "./logger.ts";
 import type { ISecretCodec } from "./secrets/secret-codec-core.ts";
 import type {
@@ -505,6 +505,31 @@ describe("ConnectServer", () => {
       errorCode: "invalid_json",
       meta: { service: "example" },
     });
+  });
+
+  it("accepts case-insensitive JSON media types when disconnecting a named connection", async () => {
+    const app = createTestServer([apiKeyProvider]).createApp();
+    for (const [connectionName, apiKey] of [
+      ["default", "default-key"],
+      ["work", "work-key"],
+    ]) {
+      await app.request("/api/connections/example", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ authType: "api_key", connectionName, values: { apiKey } }),
+      });
+    }
+
+    const response = await app.request("/api/connections/example", {
+      method: "DELETE",
+      headers: { "content-type": "Application/JSON; Charset=UTF-8" },
+      body: JSON.stringify({ connectionName: "work" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ connectionName: "work", configured: false });
+    const connections = (await (await app.request("/api/connections")).json()) as Array<{ connectionName: string }>;
+    expect(connections.map((connection) => connection.connectionName)).toEqual(["default"]);
   });
 
   it("rejects JSON request bodies that are not objects", async () => {
@@ -3597,7 +3622,6 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
     connections,
     runs,
     transitFiles,
-    actionPolicy: options.actionPolicy,
     logger: options.logger,
   });
   const staticRoot = typeof options.staticRoot === "string" ? options.staticRoot : undefined;
@@ -3882,6 +3906,12 @@ class MemoryOAuthClientConfigStore implements IOAuthClientConfigStore {
 
 class MemoryOAuthStateStore implements IOAuthStateStore {
   private readonly states = new Map<string, OAuthAuthorizationState>();
+
+  async deleteCreatedBefore(cutoff: string): Promise<void> {
+    for (const [state, value] of this.states) {
+      if (value.createdAt < cutoff) this.states.delete(state);
+    }
+  }
 
   async set(state: OAuthAuthorizationState): Promise<void> {
     this.states.set(state.state, state);

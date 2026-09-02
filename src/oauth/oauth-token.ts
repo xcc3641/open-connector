@@ -279,7 +279,10 @@ function createRefreshTokenFields(input: RefreshTokenRequest): Record<string, st
     "refresh_token",
     input.refreshToken,
   );
-  return fields;
+  return {
+    ...fields,
+    ...(input.extraFields ?? {}),
+  };
 }
 
 function setMappedField(

@@ -44,7 +44,11 @@ describe("PostgreSQL migrations with PGlite", () => {
       await expect(assertPostgresSchemaReady(pool)).resolves.toBeUndefined();
       await expect(migratePostgresDatabase({ pool })).resolves.toBeUndefined();
       await expect(pool.query("select name from runtime_migrations order by name")).resolves.toMatchObject({
-        rows: [{ name: "0010_runtime.sql" }, { name: "0011_runtime_token_connection_scope.sql" }],
+        rows: [
+          { name: "0010_runtime.sql" },
+          { name: "0011_runtime_token_connection_scope.sql" },
+          { name: "0012_marketplace.sql" },
+        ],
       });
 
       await pool.query("delete from runtime_migrations where name = $1", ["0010_runtime.sql"]);
@@ -121,6 +125,24 @@ describe("PostgresRuntimeDatabase with PGlite", () => {
     });
     await expect(database.oauthStateStore.take("state-1")).resolves.toMatchObject({ state: "state-1" });
     await expect(database.oauthStateStore.take("state-1")).resolves.toBeUndefined();
+  });
+
+  it("deletes OAuth states created before a cutoff", async () => {
+    await database.oauthStateStore.set({
+      service: "gmail",
+      state: "expired",
+      createdAt: "2026-06-30T00:00:00.000Z",
+    });
+    await database.oauthStateStore.set({
+      service: "gmail",
+      state: "current",
+      createdAt: "2026-06-30T00:00:01.000Z",
+    });
+
+    await database.oauthStateStore.deleteCreatedBefore("2026-06-30T00:00:01.000Z");
+
+    await expect(database.oauthStateStore.take("expired")).resolves.toBeUndefined();
+    await expect(database.oauthStateStore.take("current")).resolves.toMatchObject({ state: "current" });
   });
 
   it("preserves connection identity and rejects stale revisions", async () => {
@@ -264,6 +286,25 @@ describe("PostgresRuntimeDatabase with PGlite", () => {
     await expect(database.runLogStore.list()).resolves.toMatchObject({
       items: [{ id: "run-3" }, { id: "run-2" }],
     });
+  });
+
+  // PostgreSQL numbers its bind parameters, so a combined filter is what pins the `$n` sequence
+  // the shared run log query builder emits.
+  it("filters runs by action, caller, and status and reads one run by id", async () => {
+    const match = {
+      ...createRun("run-match", "2026-06-30T00:00:02.000Z", "gmail.send_message", "gmail"),
+      caller: "mcp" as const,
+      ok: false,
+    };
+
+    await database.runLogStore.add(createRun("run-other", "2026-06-30T00:00:01.000Z"));
+    await database.runLogStore.add(match);
+
+    await expect(
+      database.runLogStore.list({ actionId: "gmail.send_message", caller: "mcp", ok: false }),
+    ).resolves.toMatchObject({ items: [{ id: "run-match" }] });
+    await expect(database.runLogStore.get("run-match")).resolves.toEqual(match);
+    await expect(database.runLogStore.get("missing")).resolves.toBeUndefined();
   });
 
   it("rotates encrypted values and resets runtime data without removing migrations", async () => {

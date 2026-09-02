@@ -100,6 +100,24 @@ export interface ConnectionRecord {
   metadata: Record<string, unknown>;
 }
 
+export interface MarketplaceState {
+  configured: boolean;
+  enabled: boolean;
+  discoveryUrl: string;
+  status: "disabled" | "available" | "unavailable" | "auth_error";
+  marketplace?: { version: 1; id: string; name: string; pricing: "free" | "metered" };
+  compatibleActionCount: number;
+  compatibleProviderCount: number;
+  error?: string;
+}
+
+export interface ProviderPreference {
+  service: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OAuthConfig {
   service: string;
   configured: boolean;
@@ -205,6 +223,8 @@ export interface AppData {
   runtimePolicy?: RuntimePolicyState;
   runs: RunLog[];
   runsNextCursor?: string;
+  marketplace?: MarketplaceState;
+  providerPreferences?: ProviderPreference[];
 }
 
 export interface OverviewSummary {
@@ -223,6 +243,7 @@ export interface ProviderConnectionStatus {
   oauthClientRequired: boolean;
   connections: ConnectionRecord[];
   connection?: ConnectionRecord;
+  marketplaceConnection?: ConnectionRecord;
 }
 
 const firstProviderService = "fusion-api";
@@ -258,10 +279,7 @@ const recommendedProviderServices = [
   "stripe",
   "googleanalytics",
   "googlesearchconsole",
-  "facebookleadads",
-  "metaads",
   "linkedin",
-  "salesforce",
   "pipedrive",
   "zendesk",
   "intercom",
@@ -292,6 +310,7 @@ export const emptyData: AppData = {
     runtime: emptyPolicyRules(),
   },
   runs: [],
+  providerPreferences: [],
 };
 
 function emptyPolicyRules(): PolicyRules {
@@ -324,6 +343,7 @@ export function resolveProviderConnectionStatus(
 ): ProviderConnectionStatus {
   const serviceConnections = usableConnectionsForService(connections, provider.service);
   const connection = pickUsableConnection(serviceConnections);
+  const marketplaceConnection = serviceConnections.find((item) => item.authType === "marketplace");
   return {
     // no_auth apps still need an explicit local connection before MCP discovery or execution.
     noSetupRequired: false,
@@ -332,6 +352,7 @@ export function resolveProviderConnectionStatus(
       connection == null && providerRequiresOAuth(provider) && !oauthClientConfigured(provider.service, oauthConfigs),
     connections: serviceConnections,
     connection,
+    marketplaceConnection,
   };
 }
 
@@ -350,7 +371,11 @@ function pickUsableConnection(connections: ConnectionRecord[]): ConnectionRecord
 
 /** Stored connections that make a provider available locally, including activated no-auth apps. */
 function isUsableConnection(connection: ConnectionRecord | undefined): connection is ConnectionRecord {
-  return connection != null && connection.virtual !== true && connection.configured !== false;
+  return (
+    connection != null &&
+    (connection.virtual !== true || connection.authType === "marketplace") &&
+    connection.configured !== false
+  );
 }
 
 function providerRequiresOAuth(provider: ProviderDefinition): boolean {
@@ -444,13 +469,6 @@ function compactProviderService(service: string): string {
     .replace(/\s+/g, "");
 }
 
-export function firstProviderByConnectionStatus(
-  providers: ProviderDefinition[],
-  connections: ConnectionRecord[],
-): ProviderDefinition | undefined {
-  return sortProviders(providers, new Map(connections.map((connection) => [connection.service, connection])))[0];
-}
-
 export function filterActions(actions: ActionDefinition[], query: string, service: string | null): ActionDefinition[] {
   const normalized = query.trim().toLowerCase();
   return actions.filter((action) => {
@@ -530,8 +548,10 @@ export function compactJson(value: unknown): string {
   return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
+// These mirror src/core/json-schema.ts (readSchemaProperties/readSchemaRequired/describeSchemaType) and must be
+// kept in sync by hand because the web build cannot import src/.
 function readProperties(schema: JsonSchema): Record<string, JsonSchema> {
-  return schema.properties && typeof schema.properties === "object"
+  return schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
     ? (schema.properties as Record<string, JsonSchema>)
     : {};
 }

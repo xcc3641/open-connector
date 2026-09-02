@@ -239,11 +239,13 @@ export interface ProviderInputFile {
 export class ProviderRequestError extends Error {
   readonly status: number;
   readonly details?: unknown;
+  readonly code?: string;
 
-  constructor(status: number, message: string, details?: unknown) {
+  constructor(status: number, message: string, details?: unknown, code?: string) {
     super(message);
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
@@ -251,12 +253,6 @@ export interface ProviderTimeout {
   signal: AbortSignal;
   didTimeout(): boolean;
   cleanup(): void;
-}
-
-export interface BearerProviderProxyDefinition {
-  service: string;
-  baseUrl: string;
-  allowedEndpoint?: (endpoint: string) => boolean;
 }
 
 export type ProviderProxyAuth =
@@ -310,7 +306,7 @@ const defaultProviderErrorMaxResponseBytes = 64 * 1024;
 export function createProviderProxyUrl(baseUrl: string, endpointInput: unknown, queryInput?: unknown): URL {
   const endpoint = normalizeProviderProxyEndpoint(endpointInput);
   const base = new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
-  const url = new URL(endpoint.slice(1), base);
+  const url = new URL(`./${endpoint.slice(1)}`, base);
   if (url.origin !== base.origin) {
     throw new ProviderRequestError(400, "endpoint must stay on the provider origin");
   }
@@ -542,13 +538,6 @@ export function providerProxyEndpointPrefixes(...prefixes: string[]): (endpoint:
     prefixes.some((prefix) => endpoint === prefix || endpoint.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
 }
 
-export function defineBearerProviderProxy(input: BearerProviderProxyDefinition): ProviderProxyExecutor {
-  return defineProviderProxy({
-    ...input,
-    auth: { type: "bearer" },
-  });
-}
-
 export function credentialProviderProxyBaseUrl(...fields: string[]): ProviderProxyBaseUrlResolver {
   return async (context: ExecutionContext, service: string): Promise<string> => {
     const credential = await context.getCredential(service);
@@ -658,10 +647,11 @@ export function isAbortLikeError(error: unknown): boolean {
 }
 
 /**
- * Return whether an error came from a specific aborted signal.
+ * Return whether an error came from a specific aborted signal, counting the
+ * signal's own abort reason regardless of the name it carries.
  */
 export function isAbortSignalError(signal: AbortSignal | undefined, error: unknown): boolean {
-  return signal?.aborted === true && isAbortLikeError(error);
+  return signal?.aborted === true && (isAbortLikeError(error) || error === signal.reason);
 }
 
 /**
@@ -850,13 +840,14 @@ export function toProviderExecutionError(error: unknown, fallbackMessage: string
       ok: false,
       error: {
         code:
-          error.status === 401 || error.status === 403
+          error.code ??
+          (error.status === 401 || error.status === 403
             ? "authorization_failed"
             : error.status === 429
               ? "rate_limited"
               : error.status < 500
                 ? "invalid_input"
-                : "provider_error",
+                : "provider_error"),
         message: error.message,
         details: {
           status: error.status,

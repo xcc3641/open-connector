@@ -10,15 +10,11 @@
     "copy": "Копировать {{label}}",
     "credential": "Учетные данные",
     "currentSelection": "Текущий выбор",
-    "docs": "Документы",
     "failed": "Ошибка",
     "loadingRuntimeData": "Загрузка данных runtime...",
     "local": "Локально",
     "noAuth": "Без auth",
-    "notConnected": "Не подключено",
-    "open": "Открыть",
     "refresh": "Обновить",
-    "required": "Обязательно",
     "runtimeReady": "Runtime готов",
     "showMore": "Показать еще",
     "showing": "Показано {{shown}} из {{total}}",
@@ -40,6 +36,7 @@
   "nav": {
     "overview": "Обзор",
     "providers": "Провайдеры",
+    "marketplace": "Marketplace",
     "oauthApps": "OAuth Apps",
     "actions": "Действия",
     "runs": "Запуски",
@@ -61,32 +58,26 @@
     },
     "headings": {
       "overview": {
-        "title": "Обзор",
-        "subtitle": "Состояние и здоровье runtime."
+        "title": "Обзор"
       },
       "providers": {
-        "title": "Провайдеры",
-        "subtitle": "Подключайте провайдеры и проверяйте их возможности."
+        "title": "Провайдеры"
       },
+      "marketplace": { "title": "Marketplace" },
       "oauthApps": {
-        "title": "OAuth Apps",
-        "subtitle": "Управляйте OAuth App по умолчанию для каждого провайдера."
+        "title": "OAuth Apps"
       },
       "actions": {
-        "title": "Действия",
-        "subtitle": "Ищите, проверяйте и отлаживайте действия локального runtime."
+        "title": "Действия"
       },
       "runs": {
-        "title": "Запуски",
-        "subtitle": "Недавние локальные выполнения действий."
+        "title": "Запуски"
       },
       "access": {
-        "title": "API Key",
-        "subtitle": "Управляйте runtime API token для агентов и клиентов."
+        "title": "API Key"
       },
       "resources": {
-        "title": "Ресурсы",
-        "subtitle": "Сгенерированные API reference и метаданные инструментов."
+        "title": "Ресурсы"
       }
     }
   },
@@ -100,7 +91,6 @@
     "capabilityStatus": "Статус возможностей",
     "metrics": {
       "providers": "Провайдеры",
-      "actions": "Действия",
       "executable": "Выполняемые",
       "runHealth": "Состояние запусков"
     },
@@ -111,8 +101,6 @@
     "unavailable": "Недоступно",
     "needsAttention": "Требует внимания",
     "recentFailures": "Недавние ошибки",
-    "noFailedRunsTitle": "Ошибок нет",
-    "noFailedRunsDescription": "Недавние запуски действий прошли чисто.",
     "callTrend": "Тренд вызовов инструментов",
     "callTrendLegend": "Сервисы",
     "noCallTrendTitle": "Тренда вызовов пока нет",
@@ -123,6 +111,58 @@
     "callCountMany": "{{count}} вызовов",
     "noRecentCallsTitle": "Недавних вызовов нет",
     "noRecentCallsDescription": "Запустите действие, чтобы увидеть вызовы по провайдерам."
+  },
+  "marketplace": {
+    "summary": {
+      "title": "Connector Marketplace",
+      "description": "Управляемый доступ к провайдерам для этого Connector.",
+      "providers": "Провайдеры",
+      "actions": "Действия"
+    },
+    "status": {
+      "disabled": "Отключено",
+      "available": "Доступно",
+      "unavailable": "Недоступно",
+      "auth_error": "Ошибка аутентификации"
+    },
+    "pricing": { "free": "Бесплатно", "metered": "Оплата по использованию" },
+    "configuration": {
+      "title": "Настройка",
+      "description": "Подключите среду к endpoint обнаружения Marketplace.",
+      "configured": "Настроено",
+      "discoveryUrl": "URL обнаружения",
+      "discoveryHelp": "Connect загрузит и проверит документ при сохранении.",
+      "apiKey": "API-ключ",
+      "apiKeyPlaceholder": "Введите API-ключ Marketplace",
+      "keepCurrentKey": "Оставьте пустым, чтобы сохранить текущий ключ",
+      "apiKeyHelp": "Шифруется при наличии ключа шифрования среды.",
+      "showApiKey": "Показать API-ключ",
+      "hideApiKey": "Скрыть API-ключ",
+      "connect": "Подключить и проверить",
+      "revalidate": "Сохранить и проверить",
+      "remove": "Удалить конфигурацию",
+      "removeConfirmation": "Удалить подключение Marketplace?",
+      "confirmRemove": "Удалить"
+    },
+    "providers": {
+      "title": "Управляемые провайдеры",
+      "description": "Включите совместимые провайдеры, доступные как виртуальные подключения.",
+      "count": "Провайдеров: {{count}}",
+      "actionCount": "Действий в каталоге: {{count}}",
+      "enabled": "Включено",
+      "disabled": "Отключено",
+      "enable": "Включить",
+      "disable": "Отключить",
+      "emptyTitle": "Нет совместимых провайдеров",
+      "emptyDescription": "Подключите Marketplace с действиями, совпадающими с локальным каталогом."
+    },
+    "messages": {
+      "saved": "Конфигурация Marketplace сохранена и проверена.",
+      "saveFailed": "Не удалось сохранить конфигурацию Marketplace.",
+      "removed": "Конфигурация Marketplace удалена.",
+      "removeFailed": "Не удалось удалить конфигурацию Marketplace.",
+      "providerFailed": "Не удалось обновить настройку провайдера."
+    }
   },
   "providers": {
     "catalogTitle": "Провайдеры",
@@ -157,9 +197,6 @@
       "notConnected": "Не подключено",
       "oauthNeedsConfig": "OAuth требует настройки"
     },
-    "providerMeta": "{{service}} · {{authTypes}} · {{count}} действий",
-    "noAuth": "без auth",
-    "oauthConfigBadge": "Настройка OAuth",
     "noProvidersTitle": "Провайдеры не найдены",
     "noProvidersDescription": "Попробуйте другой поиск или фильтр статуса.",
     "resultCount": "Показано {{shown}} / {{total}}",
@@ -172,6 +209,12 @@
     "selectProviderTitle": "Выберите провайдера",
     "selectProviderDescription": "Выберите провайдера, чтобы проверить настройки подключения.",
     "connectedBy": "Подключено через {{authType}}",
+    "marketplaceBadge": "Управляемый",
+    "marketplaceConnection": {
+      "title": "Управляемое подключение Marketplace",
+      "description": "Действия могут использовать учетные данные под управлением {{name}}.",
+      "manage": "Управление Marketplace"
+    },
     "configuredBadge": "Активен",
     "noSetupBadge": "Без настройки",
     "unconfiguredBadge": "Не подключено",
@@ -384,7 +427,6 @@
     "policy": {
       "title": "Access Policy",
       "description": "Ограничивайте actions и provider proxy requests.",
-      "rulesHint": "Block rules имеют приоритет. Непустые allowlists пересекаются между deployment, runtime и token layers. По одному rule в строке.",
       "deployment": "Deployment policy (только чтение)",
       "runtime": "Runtime policy",
       "allowedActions": "Разрешенные actions",
@@ -395,7 +437,6 @@
       "saving": "Сохранение policy...",
       "saved": "Policy сохранена.",
       "saveFailed": "Не удалось сохранить policy.",
-      "unrestricted": "Нет ограничений для token",
       "edit": "Изменить policy",
       "editToken": "Изменить token policy",
       "baseline": {
@@ -510,8 +551,7 @@
         "connectionCount": "{{count}} connections",
         "noConnections": "В этом списке нет connections.",
         "connectionsDefaultHint": "Выберите default connection провайдера, чтобы разрешить его HTTP, MCP или proxy запросы без имени.",
-        "discard": "Отменить изменения",
-        "preview": "Предпросмотр влияния"
+        "discard": "Отменить изменения"
       },
       "impact": {
         "title": "Влияние черновика",

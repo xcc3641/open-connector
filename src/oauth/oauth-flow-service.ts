@@ -26,6 +26,7 @@ export interface OAuthAuthorizationStartInput {
 export interface OAuthAuthorizationCompleteInput {
   state: string;
   code: string;
+  callbackParameters?: Record<string, string>;
   signal?: AbortSignal;
 }
 
@@ -54,6 +55,8 @@ export interface OAuthFlowServiceOptions {
  * Storage contract for pending OAuth authorization states.
  */
 export interface IOAuthStateStore {
+  /** Deletes states whose creation timestamp is earlier than the cutoff. */
+  deleteCreatedBefore(cutoff: string): Promise<void>;
   set(state: OAuthAuthorizationState): Promise<void>;
   take(state: string): Promise<OAuthAuthorizationState | undefined>;
 }
@@ -89,13 +92,15 @@ export class OAuthFlowService {
       throw new OAuthFlowError("oauth_client_config_required", `Configure an OAuth client for ${service} first.`);
     }
 
+    const now = new Date();
     const state = crypto.randomUUID();
     const pkceCodeVerifier = auth.pkce ? createPkceCodeVerifier() : undefined;
+    await this.states.deleteCreatedBefore(new Date(now.getTime() - this.stateMaxAgeMs).toISOString());
     await this.states.set({
       service,
       connectionName,
       state,
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
       pkceCodeVerifier,
       clientConfig: input.clientConfig ? config : undefined,
     });
@@ -160,11 +165,19 @@ export class OAuthFlowService {
       tokenEndpointAuthMethod: auth.tokenEndpointAuthMethod,
       tokenRequestFormat: auth.tokenRequestFormat,
       tokenUrl: this.clientConfigs.resolveEndpointUrl(pending.service, auth.tokenUrl, config),
-      extraFields: createTokenExtraFields(pending, auth.tokenParams),
+      extraFields: createTokenExtraFields(
+        pending,
+        auth.tokenParams,
+        auth.tokenRequestCallbackParameters,
+        input.callbackParameters,
+      ),
       createError: (message) => new OAuthFlowError("oauth_token_exchange_failed", message),
     });
+    const refreshParameters = readCallbackParameters(auth.tokenRequestCallbackParameters, input.callbackParameters);
     const oauthCredential = {
       ...tokenResponse,
+      providerSecret:
+        Object.keys(refreshParameters).length > 0 ? { oauthRefreshParameters: refreshParameters } : undefined,
       metadata: {
         ...tokenResponse.metadata,
         oauthClientId: config.clientId,
@@ -211,13 +224,28 @@ function setAuthorizationParam(
 
 function createTokenExtraFields(
   state: OAuthAuthorizationState,
-  tokenParams?: Record<string, string>,
+  tokenParams: Record<string, string> | undefined,
+  parameterNames: readonly string[] | undefined,
+  callbackParameters: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
-  const fields: Record<string, string> = { ...(tokenParams ?? {}) };
-  if (state.pkceCodeVerifier) {
-    fields.code_verifier = state.pkceCodeVerifier;
-  }
+  const fields: Record<string, string> = {
+    ...(tokenParams ?? {}),
+    ...readCallbackParameters(parameterNames, callbackParameters),
+  };
+  if (state.pkceCodeVerifier) fields.code_verifier = state.pkceCodeVerifier;
   return Object.keys(fields).length > 0 ? fields : undefined;
+}
+
+function readCallbackParameters(
+  parameterNames: readonly string[] | undefined,
+  values: Record<string, string> | undefined,
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const name of parameterNames ?? []) {
+    const value = values?.[name];
+    if (value) fields[name] = value;
+  }
+  return fields;
 }
 
 function isExpiredOAuthState(state: OAuthAuthorizationState, maxAgeMs: number): boolean {
@@ -226,15 +254,11 @@ function isExpiredOAuthState(state: OAuthAuthorizationState, maxAgeMs: number): 
 }
 
 function createPkceCodeVerifier(): string {
-  return encodeBase64Url(randomBytes(48));
+  return randomBytes(48).toString("base64url");
 }
 
 function createPkceCodeChallenge(codeVerifier: string): string {
-  return encodeBase64Url(createHash("sha256").update(codeVerifier).digest());
-}
-
-function encodeBase64Url(value: Uint8Array): string {
-  return Buffer.from(value).toString("base64").replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
 /**

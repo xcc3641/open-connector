@@ -49,7 +49,7 @@
 ## TypeScript And Tooling
 
 - Use native Node.js TypeScript execution. Do not add `tsx` or `--experimental-strip-types`.
-- `src/`, `scripts/`, and `examples/` each have their own `tsconfig.json`; project checks focus on `src`.
+- `src/`, `scripts/`, and `examples/` each have their own `tsconfig.json`; `npm run typecheck` checks all three projects (`src`, `scripts`, `examples`).
 - Exported top-level functions and public types should have explicit return types and useful JSDoc when it explains business meaning.
 - Use `oxfmt` and `oxlint`; do not add Prettier.
 
@@ -99,7 +99,7 @@ If a secret is committed by mistake: rotate it immediately, then purge history; 
 
 ## Verification
 
-- Before finishing code changes, run `npm run fix-check`. It runs lint fixes, formatting fixes, and the `src` typecheck.
+- Before finishing code changes, run `npm run fix-check`. It runs lint fixes, formatting fixes, and the typecheck.
 - Run `npm run build` only when you need a separate no-fix typecheck, for example after generated files changed or for CI parity.
 - Run `npm run generate:catalog` when provider definitions or actions change.
 - Run provider examples manually when the task changes user-facing example behavior.
