@@ -487,15 +487,21 @@ function assertContextBackend(context: AiImageContext, backend: AiImageBackend):
 }
 
 function filterImageModels(models: string[], backend: AiImageBackend): string[] {
+  if (backend === "gpt") {
+    return models.filter((model) => model.toLowerCase() === "gpt-image-2");
+  }
   return models.filter((model) => model.toLowerCase().startsWith(modelPrefixes[backend])).sort();
 }
 
 function assertModelMatchesBackend(model: string, backend: AiImageBackend): void {
+  if (backend === "gpt") {
+    if (model.toLowerCase() !== "gpt-image-2") {
+      throw new ProviderRequestError(400, "model must be gpt-image-2");
+    }
+    return;
+  }
   if (!model.toLowerCase().startsWith(modelPrefixes[backend])) {
-    throw new ProviderRequestError(
-      400,
-      `model must be a supported ${backend === "gpt" ? "GPT Image" : "Grok Imagine"} model`,
-    );
+    throw new ProviderRequestError(400, "model must be a supported Grok Imagine model");
   }
 }
 

@@ -37,7 +37,7 @@ const generateImageOutputSchema = s.object(
   { required: ["model", "images"], optional: ["created", "usage"] },
 );
 
-const gptImageModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"] as const;
+const gptImageModels = ["gpt-image-2"] as const;
 const grokImageModels = ["grok-imagine-image-quality", "grok-imagine-image", "grok-imagine"] as const;
 
 export function createAiImageActions(service: string, backend: AiImageBackend): ActionDefinition[] {
@@ -87,7 +87,7 @@ function generateImageInputSchema(backend: AiImageBackend): JsonSchema {
       default: backend === "gpt" ? "gpt-image-2" : "grok-imagine-image-quality",
       description:
         backend === "gpt"
-          ? "The GPT image model to use. Prefer gpt-image-2 (best). Only override when the connection lacks that model."
+          ? "The GPT image model to use (gpt-image-2)."
           : "The Grok image model to use. Prefer grok-imagine-image-quality (best).",
     }),
     n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of images to generate." }),
@@ -125,7 +125,7 @@ function editImageInputSchema(): JsonSchema {
       ),
       model: s.stringEnum([...gptImageModels], {
         default: "gpt-image-2",
-        description: "The GPT image model to use. Prefer gpt-image-2 (best).",
+        description: "The GPT image model to use (gpt-image-2).",
       }),
       n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of edited images to generate." }),
       size: s.nonEmptyString("The requested image size, such as 1024x1024."),
@@ -166,7 +166,7 @@ function generateWithReferenceInputSchema(): JsonSchema {
       ),
       model: s.stringEnum([...gptImageModels], {
         default: "gpt-image-2",
-        description: "The GPT image model to use. Prefer gpt-image-2 (best).",
+        description: "The GPT image model to use (gpt-image-2).",
       }),
       n: s.integer({ minimum: 1, maximum: 4, default: 1, description: "The number of images to generate." }),
       size: s.nonEmptyString("The requested image size, such as 1024x1024."),

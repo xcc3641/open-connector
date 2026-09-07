@@ -41,7 +41,7 @@ describe("AI-Image provider runtime", () => {
         profile: { accountId: "ai-image-gpt", displayName: "AI-Image GPT" },
         metadata: {
           backend: "gpt",
-          availableModels: ["gpt-image-1.5", "gpt-image-2"],
+          availableModels: ["gpt-image-2"],
         },
       });
       expect(fetcher).toHaveBeenCalledWith("http://host.docker.internal:18080/v1/models", expect.any(Object));
@@ -179,6 +179,28 @@ describe("AI-Image provider runtime", () => {
       output_format: "png",
       response_format: "b64_json",
       stream: false,
+    });
+  });
+
+  it("rejects non-gpt-image-2 models for GPT image generation", async () => {
+    const handlers = createAiImageActionHandlers("gpt");
+    const transitFiles = createTransitStore();
+    const fetcher = vi.fn() as unknown as typeof fetch;
+
+    await expect(
+      handlers.generate_image(
+        { prompt: "a cat", model: "gpt-image-1.5" },
+        {
+          apiKey: "sk-test",
+          backend: "gpt",
+          baseUrl: "http://sub2api.test/v1",
+          fetcher,
+          transitFiles,
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "model must be gpt-image-2",
     });
   });
 
