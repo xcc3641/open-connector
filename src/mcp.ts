@@ -39,7 +39,7 @@ export interface IMcpToolSummary {
 const mcpServerInstructions = [
   "Use OpenConnector to discover and execute provider actions through a small tool set.",
   "Start with list_apps or search_actions; both return currently available providers: configured credential-backed apps and explicitly activated no-auth apps.",
-  "Unconfigured providers are never exposed through MCP discovery. Activate a no-auth app before using it.",
+  "Unconfigured providers are never exposed through MCP discovery. No-auth apps appear only after the user activates them in the OpenConnector web console; there is no MCP tool for activation, so ask the user when an app they want is missing.",
   "Use list_connections before choosing among multiple configured accounts.",
   "Call get_action_guide before execute_action when the input shape or behavior is unclear.",
   "Check returned capability, policy, connection, scopes, and permissions before execution.",
@@ -71,7 +71,7 @@ const mcpToolConfigs = {
   list_connections: {
     title: "List Connections",
     description:
-      "List configured provider connections and their safe account profiles, optionally filtered by service id.",
+      "List configured provider connections, optionally filtered by service id. Each entry has id, service, connectionName, authType, a default flag, and a safe account profile (display name, account id, granted scopes; never credentials). Connections denied by the runtime policy are omitted. Pass an entry's connectionName to get_action_guide or execute_action to use a non-default account; omit it to use the service's default connection.",
     inputSchema: {
       service: z.string().optional().describe("Optional provider service id such as github, gmail, or notion."),
     },
@@ -79,12 +79,14 @@ const mcpToolConfigs = {
   search_actions: {
     title: "Search Actions",
     description:
-      "Search actions currently available to MCP. Searches configured credential-backed apps and explicitly activated no-auth apps. Unconfigured providers are always excluded. Use this before requesting an action guide.",
+      "Search actions of configured credential-backed apps and explicitly activated no-auth apps; unconfigured providers are always excluded. With a query, results are ranked full-text matches; without one, the first `limit` actions in catalog order are returned. Each result has id, service, name, description, an inputSummary of parameters, and a capability object. Results can include actions that the current policy or connection would deny, so check capability.policy.allowed and capability.connection before executing. Use get_action_guide for an action's full input contract.",
     inputSchema: {
       query: z
         .string()
         .optional()
-        .describe("Optional case-insensitive search text matched against action id, name, description, and scopes."),
+        .describe(
+          "Optional search text. Terms match case-insensitively (prefix and light fuzzy matching; any term can match) against each action's service id, name, and description. Action ids and scopes are not searched.",
+        ),
       service: z
         .string()
         .optional()
@@ -94,7 +96,8 @@ const mcpToolConfigs = {
   },
   get_action_guide: {
     title: "Get Action Guide",
-    description: "Return one action's compact markdown guide, including local execute examples and input parameters.",
+    description:
+      "Return one action's guide as { capability, markdown }. The markdown covers the action description, an example execute_action call, input parameters, required scopes, provider permissions, the current execution-policy decision, and the connection that would be used. Returns an error (connection_not_found or a policy code) when the service has no usable connection; a returned guide can still report the action itself as denied by policy.",
     inputSchema: {
       actionId: z.string().describe("Full action id, for example github.get_current_user."),
       connectionName: optionalConnectionNameSchema,
@@ -103,7 +106,7 @@ const mcpToolConfigs = {
   execute_action: {
     title: "Execute Action",
     description:
-      "Execute one local provider action by id with a JSON input object. Call get_action_guide first if the input shape is unclear.",
+      "Execute one provider action by id with a JSON input object and return { ok, data } or { ok: false, error }, plus executionId, auditPersisted, and the connection used when there is one. Actions can create, update, delete, send, or publish in external systems. Execution is checked against the runtime policy and the selected connection; a denial comes back as an error rather than running the action. Call get_action_guide first if the input shape is unclear.",
     inputSchema: {
       actionId: z.string().describe("Full action id, for example hackernews.get_item."),
       input: z
@@ -320,7 +323,11 @@ async function getActionGuide(
     const capability = describeActionCapability(action, policy, connection);
     return successPayload({
       capability,
-      markdown: renderActionMarkdown(action, { connection: capability.connection, policy: capability.policy }),
+      markdown: renderActionMarkdown(action, {
+        connection: capability.connection,
+        policy: capability.policy,
+        surface: "mcp",
+      }),
     });
   } catch (error) {
     return connectionErrorPayload(error, policy);

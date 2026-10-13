@@ -12,6 +12,8 @@ import { describeSchemaType, readSchemaProperties, readSchemaRequired } from "..
 export type ActionMarkdownContext = {
   connection?: ConnectionSummary;
   policy?: ActionPolicyDecision;
+  /** "mcp" renders execute_action usage instead of the local HTTP contract. */
+  surface?: "http" | "mcp";
 };
 
 /**
@@ -21,31 +23,37 @@ export type ActionMarkdownContext = {
 export function renderActionMarkdown(action: ActionDefinition, context: ActionMarkdownContext = {}): string {
   const exampleInput = buildExampleInput(action.inputSchema);
   const exampleBody = JSON.stringify({ input: exampleInput }, null, 2);
+  const mcp = context.surface === "mcp";
+  const executeBlocks: BlockContent[] = mcp
+    ? [code("json", JSON.stringify({ actionId: action.id, input: exampleInput }, null, 2))]
+    : [
+        code(
+          "bash",
+          [
+            `curl -s http://localhost:3000/v1/actions/${action.id} \\`,
+            "  -H 'content-type: application/json' \\",
+            `  -d '${JSON.stringify({ input: exampleInput })}'`,
+          ].join("\n"),
+        ),
+        code(
+          "ts",
+          [
+            `const response = await fetch("http://localhost:3000/v1/actions/${action.id}", {`,
+            `  method: "POST",`,
+            `  headers: { "content-type": "application/json" },`,
+            `  body: JSON.stringify(${indentMultiline(exampleBody, 2)}),`,
+            `});`,
+            `const result = await response.json();`,
+          ].join("\n"),
+        ),
+      ];
   const root: Root = {
     type: "root",
     children: [
       heading(1, action.id),
       ...markdownBlocks(action.description),
       heading(2, "Execute"),
-      code(
-        "bash",
-        [
-          `curl -s http://localhost:3000/v1/actions/${action.id} \\`,
-          "  -H 'content-type: application/json' \\",
-          `  -d '${JSON.stringify({ input: exampleInput })}'`,
-        ].join("\n"),
-      ),
-      code(
-        "ts",
-        [
-          `const response = await fetch("http://localhost:3000/v1/actions/${action.id}", {`,
-          `  method: "POST",`,
-          `  headers: { "content-type": "application/json" },`,
-          `  body: JSON.stringify(${indentMultiline(exampleBody, 2)}),`,
-          `});`,
-          `const result = await response.json();`,
-        ].join("\n"),
-      ),
+      ...executeBlocks,
       heading(2, "Input Parameters"),
       ...describeParameters(action.inputSchema),
       heading(2, "Required Scopes"),
@@ -58,8 +66,18 @@ export function renderActionMarkdown(action: ActionDefinition, context: ActionMa
       ...describeConnection(context.connection),
       heading(2, "Notes For Agents"),
       list([
-        textParagraph("Use the local runtime endpoint above; do not call provider APIs directly unless the user asks."),
-        paragraph(["Send JSON with a top-level ", inlineCode("input"), " object."]),
+        mcp
+          ? paragraph([
+              "Run this action with the ",
+              inlineCode("execute_action"),
+              " tool; do not call the local HTTP endpoint or provider APIs directly.",
+            ])
+          : textParagraph(
+              "Use the local runtime endpoint above; do not call provider APIs directly unless the user asks.",
+            ),
+        mcp
+          ? paragraph(["Pass the parameters as the ", inlineCode("input"), " object."])
+          : paragraph(["Send JSON with a top-level ", inlineCode("input"), " object."]),
         textParagraph("Check the current connection and provider scopes before choosing actions on the user's behalf."),
         textParagraph(
           "If execution fails with a credential error, ask the user to connect the app in the local console.",
