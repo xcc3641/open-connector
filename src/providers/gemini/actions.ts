@@ -184,6 +184,27 @@ export const geminiActions: ActionDefinition[] = [
     ),
   }),
   defineProviderAction(service, {
+    name: "generate_music",
+    description: "Generate a music track with Gemini Lyria and return a transit URL.",
+    inputSchema: s.actionInput(
+      {
+        model: s.string("The Lyria model name to use, such as lyria-3.5, lyria-3-pro-preview or lyria-3-clip-preview."),
+        prompt: s.nonEmptyString("The text prompt describing the music to generate."),
+        temperature: s.number("The sampling temperature."),
+        timeout: s.number("The request timeout in seconds. Defaults to 300."),
+      },
+      ["prompt"],
+      "The input payload for this action.",
+    ),
+    outputSchema: s.actionOutput(
+      {
+        audio: downloadableFileSchema,
+        text: s.string("Any text the model returned alongside the audio, such as lyrics or a structure note."),
+      },
+      "The output payload for this action.",
+    ),
+  }),
+  defineProviderAction(service, {
     name: "generate_videos",
     description: "Start a Gemini Veo video generation operation.",
     inputSchema: s.actionInput(

@@ -14,6 +14,9 @@ export const geminiDefaultVideoPollIntervalMs = 10_000;
 export const geminiDefaultVideoMaxWaitMs: number = 12 * 60_000;
 export const geminiDefaultRequestTimeoutMs = 10_000;
 export const geminiDefaultLongRunningRequestTimeoutMs = 30_000;
+export const geminiDefaultMusicModel = "lyria-3.5";
+// Lyria renders the whole track before responding; full-length songs routinely take minutes.
+export const geminiDefaultMusicRequestTimeoutMs: number = 5 * 60_000;
 
 type GeminiErrorMode = "validate" | "execute";
 
@@ -332,6 +335,57 @@ export async function generateGeminiImage(
   return {
     image: await createTransitDownloadableFile(context, "gemini-image", mimeType, bytes),
   };
+}
+
+export async function generateGeminiMusic(
+  input: Record<string, unknown>,
+  context: GeminiRuntimeContext,
+): Promise<unknown> {
+  const model = resolveGeminiModel(input.model, geminiDefaultMusicModel);
+  const response = await fetchGemini(
+    `${geminiApiBaseUrl}/${buildModelResource(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: geminiHeaders(context.apiKey),
+      body: JSON.stringify(
+        jsonObject({
+          contents: buildGeminiPrompt(String(input.prompt)),
+          generationConfig: jsonObject({
+            temperature: optionalNumber(input.temperature),
+          }),
+        }),
+      ),
+    },
+    context,
+    "generate_music",
+    resolveGeminiTimeoutMs(input.timeout, geminiDefaultMusicRequestTimeoutMs),
+  );
+
+  await assertGeminiResponse(response, "execute", "generate_music");
+  const payload = await readGeminiJson(response, "generate_music");
+  const inlineAudio = extractInlineDataPart(payload, "audio/");
+  const fileAudio = extractFileDataPart(payload, "audio/");
+
+  let bytes: Uint8Array | undefined;
+  let mimeType: string | undefined;
+
+  if (inlineAudio) {
+    bytes = decodeBase64Bytes(inlineAudio.data);
+    mimeType = inlineAudio.mimeType;
+  } else if (fileAudio) {
+    const downloaded = await downloadMediaBytes(fileAudio.fileUri, context);
+    bytes = downloaded.bytes;
+    mimeType = fileAudio.mimeType ?? downloaded.mimeType ?? "audio/mpeg";
+  }
+
+  if (!bytes || !mimeType) {
+    throw new ProviderRequestError(502, "gemini response did not include a usable audio file", payload);
+  }
+
+  return compactObject({
+    audio: await createTransitDownloadableFile(context, "gemini-music", mimeType, bytes),
+    text: extractTextFromResponse(payload),
+  });
 }
 
 export async function generateGeminiVideos(
@@ -735,6 +789,8 @@ function resolveMimeTypeExtension(mimeType: string): string {
       return "mp4";
     case "video/webm":
       return "webm";
+    case "audio/mpeg":
+      return "mp3";
     case "audio/wav":
       return "wav";
     case "audio/pcm":

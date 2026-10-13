@@ -14,6 +14,7 @@ import {
   geminiDefaultVideoPollIntervalMs,
   generateGeminiContent,
   generateGeminiImage,
+  generateGeminiMusic,
   generateGeminiVideos,
   getGeminiVideosOperation,
   listGeminiModels,
@@ -39,6 +40,9 @@ export const geminiActionHandlers: ProviderActionHandlers<"gemini", GeminiAction
   },
   generate_image(input, context) {
     return generateGeminiImage(input, createGeminiRuntimeContext(context));
+  },
+  generate_music(input, context) {
+    return generateGeminiMusic(input, createGeminiRuntimeContext(context));
   },
   generate_videos(input, context) {
     return generateGeminiVideos(input, createGeminiRuntimeContext(context));
