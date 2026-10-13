@@ -41,7 +41,11 @@ export function providerIconsPlugin(options: ProviderIconsPluginOptions = {}): P
 async function loadProviderIconsModule(): Promise<string> {
   const response = await fetch(catalogUrl);
   if (!response.ok) {
-    throw new Error(`Could not load OOMOL provider icons: ${response.status} ${response.statusText}`);
+    // Icons are cosmetic; a missing remote catalog must not break the console build.
+    console.warn(
+      `Could not load OOMOL provider icons: ${response.status} ${response.statusText}; building without icons.`,
+    );
+    return serializeProviderIcons({});
   }
 
   const payload = (await response.json()) as CatalogPayload;
